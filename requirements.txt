@@ -1,0 +1,11 @@
+data-cache
+numpy
+pandas
+scikit-learn
+tensorboard
+torch
+torch-geometric
+matplotlib
+tqdm
+scipy
+networkx
