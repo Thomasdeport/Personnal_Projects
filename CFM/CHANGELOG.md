@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-10-06
+- `scripts/kaggle_upload.py` publie le code comme Dataset Kaggle privé versionné, via kagglehub, avec le commit git dans la note de version.
+- Notebook : `CODE_DATASET` télécharge la dernière version du code ; il affiche la version utilisée.
+
 ## 0.1.1 — 2026-10-06
 - Notebook unique à la racine, `CFM_Signature_Lab.ipynb` : tests, screening, 3 tabulaires, banc neuronal de 5 variantes (une différence à la fois), seeds des finalistes, blend et soumission.
 - Les modèles d'arbres tournent en sous-processus (crash OpenMP xgboost/lightgbm + torch reproduit sur macOS).

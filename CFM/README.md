@@ -22,6 +22,22 @@ Rien dans ce repo n'a été exécuté sur les vraies données. Les tests et la d
 
 Coût mesuré en local (CPU 4 cœurs, données répliquées) : environ **3 min** pour calculer tous les blocs de features sur 242 400 fenêtres. La lecture du CSV, les modèles XGBoost et les réseaux n'ont **pas** été mesurés sur GPU Kaggle.
 
+### Relier le code à Kaggle (kagglehub)
+
+Le code est publié comme **Dataset Kaggle privé**. Chaque upload crée une nouvelle version, et le notebook télécharge la dernière.
+
+1. Une seule fois : Kaggle → *Settings* → *API* → *Create New Token*. Placer le fichier dans `~/.kaggle/kaggle.json` puis faire `chmod 600 ~/.kaggle/kaggle.json`. Ne jamais le commiter.
+2. Publier, depuis ce dossier :
+   ```bash
+   pip install kagglehub
+   python scripts/kaggle_upload.py --dry-run       # liste ce qui partirait
+   python scripts/kaggle_upload.py --notes "première version"
+   ```
+   Le handle par défaut est `<ton username>/cfm-signature-lab`. La note de version contient le commit git, et signale les modifications non commitées.
+3. Dans le notebook Kaggle, renseigner `CODE_DATASET = '<ton username>/cfm-signature-lab'` dans la première cellule. Sinon, attacher le Dataset via *Add Input* et laisser `CODE_DATASET = None`. La première ligne affichée indique la version du code utilisée.
+
+Ne sont jamais envoyés : `.git`, les caches, les données (`*.csv`, `*.npy`, `*.npz`), les poids (`*.pt`), les zips.
+
 ### En ligne de commande
 
 ```bash

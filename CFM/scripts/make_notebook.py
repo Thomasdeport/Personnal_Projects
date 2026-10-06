@@ -32,13 +32,24 @@ from pathlib import Path
 if sys.platform == 'darwin':
     os.environ.setdefault('OMP_NUM_THREADS', '1')   # macOS : xgboost + torch dans un même processus
 
+# Code : Dataset Kaggle privé publié par `python scripts/kaggle_upload.py` (voir README).
+CODE_DATASET = None   # ex. 'ton-username/cfm-signature-lab' : télécharge la DERNIÈRE version du code via kagglehub
+                      # None : cherche le code localement ou dans un Dataset attaché via « Add Input »
+
 def find_repo():
+    if CODE_DATASET:
+        import kagglehub
+        path = Path(kagglehub.dataset_download(CODE_DATASET, force_download=True))
+        hits = [p.parent.parent for p in path.glob('**/cfm/__init__.py')]
+        if not hits:
+            raise FileNotFoundError(f'{CODE_DATASET} ne contient pas cfm/')
+        return hits[0]
     for p in [Path('.'), Path('..'), Path('/kaggle/working/cfm-signature-lab')]:
         if (p / 'cfm' / '__init__.py').exists():
             return p.resolve()
     for p in Path('/kaggle/input').glob('**/cfm/__init__.py'):
         return p.parent.parent
-    raise FileNotFoundError('Dossier du repo introuvable : attacher le Dataset contenant cfm/')
+    raise FileNotFoundError('Code introuvable : renseigner CODE_DATASET ou attacher le Dataset du code')
 
 REPO = find_repo(); sys.path.insert(0, str(REPO))
 
@@ -83,6 +94,7 @@ def cli(*args, name='base'):
     if p.wait():
         raise RuntimeError(''.join(lines[-30:]))
 print('repo', REPO, '| lab', LAB, '| device', cfg['device'])
+print('code', next(l for l in (REPO / 'CHANGELOG.md').read_text().splitlines() if l.startswith('## ')))   # version du code utilisée
 """)
 md("## 0. Tests logiciels\nAlignement labels/`obs_id`, fenêtres contiguës, invariance au renumérotage des ordres, unités en ticks, cache, split, reprise, soumission.")
 code("""
