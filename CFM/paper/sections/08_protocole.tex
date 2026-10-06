@@ -1,0 +1,55 @@
+\section{Protocole : partitions, dépendance intra-journalière, audit}\label{sec:protocole}
+
+\subsection{Partitions}
+Pour chaque classe $c$, avec $n_c=6\,700$ fenêtres (\code{cfm/split.py}) :
+\begin{algo}[H]
+\caption{Construction des partitions}
+\begin{algobox}
+\item \textbf{Audit} : tirer $\lfloor0{,}10\,n_c\rfloor$ fenêtres au hasard, avec une graine dédiée (seed$+10\,000$). Le tirage est donc identique quel que soit le réglage du stress.
+\item \textbf{Stress} : parmi le reste, trier par $\operatorname{q}_{.5}\log(1+Q/\lot)$ (bloc \code{levels}) et prendre les $\lfloor0{,}10\,n_c\rfloor$ \emph{plus faibles} si $\Med_{\text{test}}<\Med_{\text{train}}$ (mode \code{auto}), sinon les plus élevées.
+\item \textbf{Valid} : $\lfloor0{,}15\,n_c\rfloor$ au hasard parmi le reste.
+\item \textbf{Fit} : tout le reste.
+\end{algobox}
+\end{algo}
+\noindent Tailles obtenues : fit $104\,520$, valid $24\,120$, stress $16\,080$, audit $16\,080$. Médianes de profondeur : $1{,}841$ (train) contre $1{,}697$ (test) : la queue \emph{basse} est retenue. Le pipeline précédent codait \code{STRESS\_TAIL='high'}. Son stress mesurait donc la robustesse à des carnets \emph{plus} profonds, alors que le test l'est \emph{moins}.
+
+\begin{remarque}[Transductivité]
+Le choix du sens utilise une statistique des entrées test (non étiquetées). C'est consigné dans \code{split.json} (\code{transductive: true}). Le mode \code{low} ou \code{high} rend le protocole purement « train only ».
+\end{remarque}
+
+\subsection{Pourquoi la validation aléatoire surestime le test}\label{sec:dependance}
+Reprenons le modèle hiérarchique~\eqref{eq:hier}. Avec un split aléatoire au niveau des fenêtres, une fenêtre de validation du jour $d$ a, en moyenne,
+\begin{equation}
+20\times\frac{|\text{fit}|}{N_{\text{tr}}}=20\times0{,}65=13
+\end{equation}
+« sœurs » du même titre et du même jour dans le fit. Le classifieur peut alors exploiter $\eta_{c,d}$ : il reconnaît le \emph{jour} autant que le titre. Formellement, notons $A_{\text{val}}$ l'accuracy en validation aléatoire et $A_{\text{new}}$ celle sur des jours jamais vus :
+\begin{equation}
+A_{\text{val}}=A_{\text{new}}+\underbrace{\Pr(\text{correct grâce à }\eta\mid\text{jour vu})-\Pr(\text{correct grâce à }\eta\mid\text{jour non vu})}_{\Delta_\eta\ \ge\ 0\ \text{en général}} .
+\end{equation}
+$\Delta_\eta$ grandit avec la variance de journée $\sigma^2_\eta$ et avec la capacité du modèle à mémoriser des régimes fins. Un réseau qui lit 100 événements en détail en a beaucoup plus qu'un MLP sur des moyennes. Le test ajoute un second écart : ses jours sont non seulement nouveaux, mais d'une \emph{autre période} (covariate shift). Observation sur le run 1 :
+\begin{equation}
+A_{\text{val}}=0{,}852\quad\longrightarrow\quad A_{\text{LB}}=0{,}570,\qquad\text{écart }=28\text{ points.}
+\end{equation}
+L'historique montrait déjà ce phénomène : la V3 rapportait $74{,}15\,\%$ en hold-out pour $50{,}24\,\%$ au leaderboard.
+
+\paragraph{Conséquence sur les intervalles.} Le bootstrap apparié de la section~\ref{sec:screening} rééchantillonne des fenêtres comme si elles étaient indépendantes. Avec une corrélation intra-jour $\varrho$ entre les indicatrices de réussite et $\bar m$ fenêtres par jour dans l'échantillon, la variance réelle d'une moyenne est multipliée par l'\emph{effet de plan}
+\begin{equation}
+\mathrm{deff}=1+(\bar m-1)\varrho .
+\end{equation}
+Les intervalles rapportés sont donc trop étroits d'un facteur $\sqrt{\mathrm{deff}}$, qui est inconnu faute de dates.
+
+\subsection{Ce que mesure chaque partition}
+\begin{center}\small
+\begin{tabular}{lll}
+\toprule
+Partition & Sert à & Limite\\
+\midrule
+fit & apprendre ; scalers ; early stopping interne (tabulaire) & —\\
+valid & choisir l'époque & partage les jours du fit : optimiste\\
+stress & comparer les configurations (après équilibrage) & partage aussi des jours ; décalé en profondeur seulement\\
+audit & score final unique, décisions gelées & n'a jamais été ouvert\\
+LB public & seule mesure hors période & coûteuse : à consulter avec parcimonie\\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent Le fichier \code{LEADERBOARD.md} consigne chaque soumission avec la question qu'elle tranchait.

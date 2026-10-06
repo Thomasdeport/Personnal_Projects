@@ -1,0 +1,63 @@
+\section{Unités naturelles : ticks et lots}\label{sec:unites}
+
+\subsection{Les grandeurs de base}
+Soit $\tick$ le tick estimé ($\tick=0{,}01$ sur le challenge) et $\lot$ la taille de lot ($\lot=100$, valeur de configuration). On définit, pour chaque événement $t$ d'une fenêtre (fichier \code{features/common.py}) :
+\begin{align}
+\text{cotation valide}\quad & \mathcal{Q}_t=\ind{b_t,\alpha_t\ \text{finis},\ \alpha_t\ge b_t},\\
+\text{spread en ticks}\quad & S_t=\frac{\alpha_t-b_t}{\tick}\in\N\quad(\text{NaN si }\neg\mathcal{Q}_t),\\
+\text{mid}\quad & m_t=\tfrac12(b_t+\alpha_t),\\
+\text{variation du mid en demi-ticks}\quad & h_t=\frac{2(m_t-m_{t-1})}{\tick}\in\Z,\qquad h_1=0,\\
+\text{distance au meilleur prix de son côté}\quad & D_t=\frac1\tick\begin{cases}b_t-p_t&\text{si }s_t=B,\\ p_t-\alpha_t&\text{si }s_t=A,\end{cases}\\
+\text{tailles valides}\quad & \mathcal{V}_t=\ind{q^b_t,q^a_t\ \text{finis},\ \ge0},\\
+\text{profondeur}\quad & Q_t=q^b_t+q^a_t\quad(\text{NaN si }\neg\mathcal{V}_t),\\
+\text{imbalance}\quad & I_t=\frac{q^b_t-q^a_t}{Q_t}\in[-1,1]\quad(\text{NaN si }Q_t=0),\\
+\text{flux en lots}\quad & F_t=f_t/\lot .
+\end{align}
+$D_t=0$ signifie « au meilleur prix » ; $D_t>0$, « plus profond dans le carnet » ; $D_t<0$, « dans le spread », c'est-à-dire un ordre qui améliore la cote. Un ordre d'achat placé à $b_t-2\tick$ et un ordre de vente placé à $\alpha_t+2\tick$ reçoivent tous deux $D_t=2$ : la grandeur est symétrique entre côtés par construction.
+
+\begin{remarque}[Pourquoi des demi-ticks]
+$m_t$ est la moyenne de deux multiples de $\tick$ : c'est un multiple de $\tick/2$. Donc $h_t$ est un entier. Un mid qui monte d'un demi-tick correspond exactement à une seule cotation (bid ou ask) qui monte d'un tick.
+\end{remarque}
+
+\subsection{Ce que la normalisation par médiane locale efface}
+Le pipeline précédent utilisait des grandeurs relatives à la fenêtre, comme $r_t=S_t/s^\star$ avec $s^\star=\Med\{S_u:S_u>0\}$.
+
+\begin{proposition}[Invariance d'échelle, donc perte d'échelle]\label{prop:scale}
+Soit $g$ une fonction quelconque de la suite $(r_t)_t$. Pour tout $c>0$, remplacer $(S_t)$ par $(cS_t)$ laisse $g$ inchangée.
+\end{proposition}
+\begin{proof}
+$s^\star(cS)=c\,s^\star(S)$, donc $r_t(cS)=cS_t/(c\,s^\star)=r_t(S)$.
+\end{proof}
+\begin{corollaire}
+Une fenêtre au spread constant de 1 tick et une fenêtre au spread constant de 5 ticks ont exactement la même représentation relative ($r_t\equiv1$). Aucun modèle construit sur $r$ seul ne peut les distinguer.
+\end{corollaire}
+\noindent Or c'est précisément ce qui distingue un titre à \emph{gros tick} d'un titre à \emph{petit tick}. Pour un titre à gros tick, le tick est grand devant la volatilité intra-journalière : son spread reste presque toujours à 1 tick, et son mid saute par demi-ticks. Pour un titre à petit tick, le spread fluctue sur plusieurs ticks. Le pipeline précédent gardait ce niveau dans une feature séparée ($\log$ du spread médian). Mais il perdait la \emph{forme} discrète de la distribution : la part exacte du temps à 1 tick, à 2 ticks, etc.
+
+Les parts en ticks conservent cette information :
+\begin{equation}
+\pi_k(W)=\frac{\sum_t\ind{S_t=k}}{\sum_t\mathcal{Q}_t},\quad k\in\{0,1,2\},\qquad \pi_{3\text{--}4},\ \pi_{\ge5}.
+\end{equation}
+Empiriquement (section~\ref{sec:resultats}), $\pi_{\ge5}$ et $\pi_1$ ont un pouvoir séparateur $\eta^2=0{,}56$ et $0{,}50$, pour une dérive train/test de seulement $\mathrm{KS}=0{,}02$. C'est la meilleure combinaison utilité/stabilité du screening.
+
+\subsection{Lots : la convention de taille}
+Pour une quantité non nulle $a=|F_t|$, on distingue :
+\begin{equation}
+\text{odd lot}: a<1,\qquad \text{lot rond}: a\in\{1,2,\dots\},\qquad \text{mixte}: a>1,\ a\notin\N .
+\end{equation}
+Les parts de chaque catégorie par fenêtre forment le bloc \code{lots}. Le pipeline précédent divisait le flux par sa médiane absolue $f^\star$. Or $f^\star$ vaut presque toujours exactement $\lot$ : sur la figure 04 du pipeline précédent, $\log(1+f^\star)$ est concentré à $\log 101\approx4{,}62$. Cette normalisation revenait donc à diviser par $\lot$, sans exprimer ce qui distingue vraiment les titres : la \emph{fréquence} des odd lots et des tailles mixtes.
+
+\subsection{Une redondance évitée : le microprice}
+\begin{lemme}
+Soit le microprice $\mu_t=\dfrac{\alpha_tq^b_t+b_tq^a_t}{q^b_t+q^a_t}$. Alors $\dfrac{\mu_t-m_t}{\alpha_t-b_t}=\dfrac{I_t}{2}$.
+\end{lemme}
+\begin{proof}
+$\mu_t-m_t=\dfrac{\alpha_tq^b+b_tq^a}{Q}-\dfrac{(\alpha_t+b_t)(q^b+q^a)}{2Q}=\dfrac{(\alpha_t-b_t)(q^b-q^a)}{2Q}$.
+\end{proof}
+\noindent Ajouter le microprice normalisé en plus de l'imbalance n'apporterait qu'une copie linéaire.
+
+\subsection{Données invalides}
+Une cotation croisée ($\alpha_t<b_t$), une taille négative ou une valeur non finie produisent des NaN dans les grandeurs dérivées. Elles ne produisent jamais un 0, qui serait une fausse valeur plausible. Les statistiques de fenêtre sont calculées sur les valeurs finies seulement :
+\begin{equation}
+\overline{x}(W)=\frac{\sum_t x_t\ind{x_t\ \text{fini}}}{\sum_t\ind{x_t\ \text{fini}}},
+\end{equation}
+et valent NaN si aucune valeur n'est finie. Les arbres gèrent nativement les NaN. Les réseaux les remplacent par la moyenne du fit (soit 0 après standardisation). La part de tailles nulles à une cotation valide et la part de tailles négatives sont elles-mêmes des features (bloc \code{lots}). Cette question avait été soulevée sur la figure 01 du pipeline précédent, avec un \code{ask\_size} nul pendant 48 événements.

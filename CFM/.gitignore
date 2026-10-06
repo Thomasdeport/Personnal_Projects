@@ -8,3 +8,9 @@ lab/
 __pycache__/
 submission*.csv
 lab_results.zip
+paper/*.aux
+paper/*.log
+paper/*.toc
+paper/*.out
+paper/*.loa
+paper/main.pdf

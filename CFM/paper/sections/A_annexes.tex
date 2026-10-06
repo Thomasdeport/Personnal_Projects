@@ -1,0 +1,74 @@
+\section{Notation}
+\begin{center}\small
+\begin{tabular}{ll}
+\toprule
+Symbole & Signification\\
+\midrule
+$K=24$, $L=100$ & nombre de titres, événements par fenêtre\\
+$\tick=0{,}01$, $\lot=100$ & tick, lot\\
+$v_t,o_t,a_t,s_t,\tau_t$ & venue, ordre, action, côté, trade\\
+$p_t,b_t,\alpha_t$ & prix de l'ordre, meilleur bid, meilleur ask (recentrés)\\
+$q^b_t,q^a_t,Q_t,I_t$ & tailles aux meilleures limites, profondeur, imbalance\\
+$f_t,F_t$ & flux, flux en lots\\
+$S_t,h_t,D_t$ & spread en ticks, $\Delta$mid en demi-ticks, distance au meilleur prix de son côté\\
+$\rho(t),n_t,g_t,a^{\leftarrow}_t,a^\circ_t,N_t$ & rang d'ordre, occurrence, écart, action précédente, première action, taille du parcours\\
+$s^\star,d^\star,f^\star$ & médianes positives locales (spread, profondeur, $|f|$)\\
+$\pi_k(W)$ & part du temps à $k$ ticks de spread\\
+$d=96$, $H=4$, $d_h=24$ & largeur, têtes, largeur par tête\\
+$S_{ij}$, $\beta_h$ & indicatrice « même ordre », biais appris de la tête $h$\\
+$P,\bar P,Q^\star$ & probabilités d'un modèle, du blend, après Sinkhorn\\
+$u_i,w_k$ & facteurs de ligne et de classe (Sinkhorn)\\
+$A,\alpha,k$ & graphe des voisins, poids de propagation, nombre de voisins\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Hyperparamètres}
+\begin{center}\small
+\begin{tabular}{ll}
+\toprule
+Élément & Valeur (\code{configs/base.json})\\
+\midrule
+Split & audit 10\,\%, stress 10\,\% (queue \code{auto}), valid 15\,\%, seed 42\\
+Screening & XGBoost, base \code{base\_relative}+\code{cat\_freq}, 50\,\% du fit, seed 0\\
+SignatureNet & $d=96$, $H=4$, 2 conv, 2 attentions, contexte 64, dropout 0,15\\
+Entraînement & lot de 512, AdamW $10^{-3}$, wd 0,01, warmup 1 époque, cosinus, 40 époques, patience 8\\
+Perte & entropie croisée, lissage 0,02, écrêtage du gradient 1\\
+Augmentations (robust) & venue 0,1 ; blocs 0,1 ; jitter de niveaux 0,25\\
+Augmentation (depthaug) & $\sigma_d=0{,}3$\\
+Refit & budget \code{epochs}\\
+Sinkhorn & 50 itérations, cible uniforme, écrêtage $10^{-12}$\\
+Voisins & $k\in\{3,5,10,20\}$, $\alpha\in\{0{,}3;0{,}5;0{,}8\}$, 1 ou 5 itérations, $k_{\text{test}}=4k$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Contrats testés (\code{tests/test\_lab.py}, 15 tests)}
+\begin{enumerate}
+\item labels alignés par \code{obs\_id} même si \code{y\_train} est mélangé ;
+\item fenêtres non contiguës refusées ;
+\item rang d'ordre invariant par renumérotation bijective ; identifiants manquants jamais égaux ;
+\item helpers de parcours d'ordre égaux à une boucle naïve ;
+\item unités en ticks sur une fenêtre construite à la main ;
+\item \code{base\_relative} invariant à l'échelle des tailles, \code{levels} sensible ;
+\item cache de blocs indexé par le contexte $(\tick,\lot)$ ;
+\item partitions disjointes et complètes, 24 classes partout, audit indépendant du réglage du stress ;
+\item tabulaire de bout en bout, prédictions test alignées (accuracy > hasard sur le synthétique) ;
+\item réseau : reprise identique, configuration différente refusée, refit, cinq encodeurs ;
+\item augmentation de profondeur, extraction de représentations, refus d'utiliser les poids du refit sur des partitions étiquetées ;
+\item la mise à l'échelle ne touche que les canaux de profondeur et conserve $q^b/q^a$ ;
+\item le lissage par voisins corrige des erreurs isolées ; le voisinage exclut la fenêtre elle-même ;
+\item les indicateurs sans labels sont nuls sur des prédictions équilibrées ;
+\item Sinkhorn : lignes de somme 1, colonnes de somme $N/K$.
+\end{enumerate}
+
+\section{Reproduire}
+\begin{verbatim}
+pip install -r requirements.txt
+python scripts/kaggle_upload.py --notes "..."      # code -> Dataset Kaggle privé
+# Kaggle : CFM_Signature_Lab.ipynb (round 1) puis CFM_Round2.ipynb
+python tests/test_lab.py                            # 15 contrats, CPU
+python -m cfm neural --config configs/signature.json --name sig_s0 --refit epochs
+python -m cfm blend --runs sig_s0 sig_s1 --submit --balance
+\end{verbatim}
+\noindent Pour le run 1, les fichiers \code{runs/*/result.json}, \code{history.csv}, les probabilités \code{*.npz} et \code{ledger.csv} se trouvent dans \code{lab\_results.zip}.

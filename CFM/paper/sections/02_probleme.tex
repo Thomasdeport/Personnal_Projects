@@ -1,0 +1,48 @@
+\section{Le problème et ses données}\label{sec:probleme}
+
+\subsection{Notation}
+Le jeu d'entraînement contient $N_{\text{tr}}=160\,800$ fenêtres, et le test $N_{\text{te}}=81\,600$. Une fenêtre $W$ est une suite ordonnée
+\begin{equation}
+W=(e_1,\dots,e_L),\qquad L=100,
+\end{equation}
+et chaque événement est un n-uplet
+\begin{equation}
+e_t=\big(v_t,\;o_t,\;a_t,\;s_t,\;p_t,\;b_t,\;\alpha_t,\;q^b_t,\;q^a_t,\;\tau_t,\;f_t\big)
+\end{equation}
+où :
+\begin{itemize}
+\item $v_t\in\{0,\dots,5\}$ est la \emph{venue}, c'est-à-dire la place où l'événement a lieu ;
+\item $o_t$ est l'identifiant anonymisé de l'ordre, local à la fenêtre ;
+\item $a_t\in\{A,D,U\}$ est l'action : ajout, suppression ou mise à jour ;
+\item $s_t\in\{A,B\}$ est le côté : vente (ask) ou achat (bid) ;
+\item $p_t$ est le prix de l'ordre concerné ;
+\item $b_t$ et $\alpha_t$ sont le meilleur bid et le meilleur ask du carnet \emph{agrégé entre places}, après l'événement ;
+\item $q^b_t$ et $q^a_t$ sont les quantités affichées à ces meilleures limites ;
+\item $\tau_t\in\{0,1\}$ indique si une suppression ou une mise à jour résulte d'une transaction ;
+\item $f_t$ est la variation signée de volume associée à l'événement.
+\end{itemize}
+La cible est $y\in\{0,\dots,K-1\}$, avec $K=24$.
+
+\paragraph{Recentrage.} Les prix sont fournis \emph{décalés} par le premier bid de la fenêtre : $p_t\leftarrow p_t-b_1$, et de même pour $b_t$ et $\alpha_t$. Le niveau absolu du prix est donc inconnu. Un offset proche de zéro n'est pas un prix : diviser par lui n'a pas de sens.
+
+\paragraph{Carnet agrégé.} $(b_t,\alpha_t,q^b_t,q^a_t)$ décrivent le carnet consolidé entre places. La venue $v_t$ décrit l'événement, pas un carnet séparé. Deux événements consécutifs sur des places différentes s'appliquent donc au même état agrégé.
+
+\subsection{Structure hiérarchique : titres, jours, fenêtres}\label{sec:hierarchie}
+D'après la description du challenge rapportée par l'auteur, il y a 20 fenêtres par titre et par jour. Le train couvre donc
+\[
+D_{\text{tr}}=\frac{160\,800}{24\times 20}=335\ \text{jours par titre},\qquad D_{\text{te}}=\frac{81\,600}{24\times 20}=170 .
+\]
+Cette structure a une conséquence centrale (section~\ref{sec:dependance}). Écrivons une statistique $x$ d'une fenêtre $w$ du titre $c$ le jour $d$ :
+\begin{equation}
+x_{c,d,w}=\mu_c+\eta_{c,d}+\varepsilon_{c,d,w},\qquad \eta_{c,d}\sim(0,\sigma^2_\eta),\ \varepsilon\sim(0,\sigma^2_\varepsilon).
+\label{eq:hier}
+\end{equation}
+$\mu_c$ est la signature durable du titre. $\eta_{c,d}$ est un effet de journée : niveau de prix, volatilité, profondeur du jour. $\varepsilon$ est la variation propre à la fenêtre. Un classifieur peut reconnaître $c$ grâce à $\mu_c$, ce qui transfère dans une autre période. Il peut aussi le reconnaître grâce à $\eta_{c,d}$, s'il a vu d'autres fenêtres du même jour. Ce second mécanisme ne transfère pas : les jours du test sont nouveaux.
+
+\subsection{Changement de période}
+Les périodes de train et de test diffèrent, et aucune date n'est disponible par observation. Nous distinguons trois formes de décalage, que la suite du document traite séparément :
+\begin{enumerate}
+\item \textbf{covariate shift} : $p_{\text{te}}(x)\neq p_{\text{tr}}(x)$. Par exemple, les carnets sont moins profonds dans le test ;
+\item \textbf{décalage de la relation} : $p_{\text{te}}(y\mid x)\neq p_{\text{tr}}(y\mid x)$. La même profondeur ne désigne plus les mêmes titres ;
+\item \textbf{décalage de prior des prédictions} : même si $p_{\text{te}}(y)$ est uniforme, un covariate shift peut rendre la répartition des \emph{prédictions} très non uniforme. C'est ce que corrige la section~\ref{sec:sinkhorn}.
+\end{enumerate}

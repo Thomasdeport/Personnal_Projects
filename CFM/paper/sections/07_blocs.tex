@@ -1,0 +1,54 @@
+\section{Blocs de features de fenêtre}\label{sec:blocs}
+
+\subsection{Le registre}
+Une feature de fenêtre est une fonction $\Phi:W\mapsto\R^{d}$. Elle est regroupée en \emph{blocs} : un bloc correspond à une hypothèse. Un bloc s'écrit comme une fonction Python décorée :
+\begin{center}\code{@block('ticks', family='ticks')\quad def ticks(r): return \{nom: tableau (n,)\}}\end{center}
+Le registre calcule chaque bloc une fois par partition, par morceaux de $20\,000$ fenêtres, et l'écrit sur disque sous une clé
+\begin{equation}
+\text{clé}=\operatorname{SHA256}\big(\text{source de la fonction}\ \|\ \text{source des helpers}\ \|\ (\hat\tick,\lot,\#\text{venues})\ \|\ \text{empreinte du cache brut}\big)_{[:10]} .
+\end{equation}
+Modifier une fonction change sa clé : seul ce bloc est recalculé, et l'ancienne version est supprimée. Deux règles sont imposées par conception :
+\begin{enumerate}
+\item un bloc ne lit jamais les labels ;
+\item un bloc ne calcule aucune statistique \emph{entre} fenêtres (pas de quantile global). Tout ce qui s'ajuste sur une population (standardisation, seuils) relève des modèles et se fait sur le fit seulement.
+\end{enumerate}
+
+\subsection{Opérateurs}
+Pour un masque d'événements $M$ et un masque de validité $V$ :
+\begin{equation}
+\operatorname{part}(M\mid V)=\frac{\sum_t M_tV_t}{\sum_tV_t},\qquad\operatorname{part}(M\mid V)=\text{NaN si }\textstyle\sum_tV_t=0 .
+\end{equation}
+$\operatorname{q}_\theta(x)$ désigne le quantile $\theta$ de la fenêtre sur les valeurs finies, par interpolation linéaire. Il est calculé par un tri vectorisé, équivalent exact de \code{np.nanquantile} et vingt fois plus rapide.
+
+\subsection{Les onze blocs}
+\begin{longtable}{>{\raggedright\arraybackslash}p{2.2cm}c>{\raggedright\arraybackslash}p{11.2cm}}
+\toprule
+Bloc & $d$ & Définition\\
+\midrule\endhead
+\code{base\_relative} & 18 & moyenne et écart-type sur $t$ de : $\log(1+S_t/s^\star)$, $\operatorname{asinh}(h_t/(2s^\star))$, $\operatorname{asinh}((p_t-m_t)/(\tick s^\star))$, $I_t$, $\log(1+Q_t/d^\star)$, $\operatorname{asinh}(\Delta Q_t/d^\star)$, $\operatorname{slog}(f_t/f^\star)$, $\ind{n_t>0}$, $\ind{\rho_t=\rho_{t-1}}$. \emph{Approximation des résumés du pipeline précédent : c'est la base du screening.}\\
+\code{cat\_freq} & 12 & parts de chaque venue (inconnue comprise), de chaque action, du côté B, des trades.\\
+\code{cat\_cross} & 30 & parts venue$\times$action, venue$\times$trade, action$\times$côté$\times$trade.\\
+\code{levels} & 7 & $\operatorname{q}_{.1,.5,.9}\log(1+Q/\lot)$, $\operatorname{q}_{.5}\log(1+q^b/\lot)$, $\operatorname{q}_{.5}\log(1+q^a/\lot)$, $\operatorname{q}_{.5}$ et moyenne de $\log(1+|F|)$. \emph{Niveaux absolus.}\\
+\code{ticks} & 14 & $\pi_0,\pi_1,\pi_2,\pi_{3\text{--}4},\pi_{\ge5}$ ; $\operatorname{q}_{.5}S$ ; moyenne de $\log(1+S)$ ; part de mouvements du mid ($|h|>.25$) ; parmi eux, parts d'un demi-tick, d'un tick, de plus d'un tick ; amplitude du mid en ticks ; part de prix hors grille ; part de retournements de signe entre mouvements consécutifs.\\
+\code{lots} & 9 & parts de flux nul, rond, odd, mixte, exactement 1 lot, $\ge10$ lots ; part de carnets aux deux tailles rondes ; part de taille nulle à une cotation valide ; part de tailles négatives.\\
+\code{position} & 15 & parts de $D_t$ dans le spread, au meilleur, 1, 2, 3--5, $>5$, inconnu ; pour $a\in\{A,D,U\}$ : part au meilleur, part plus profond ; part des trades au meilleur ; moyenne de $\log(1+\max(D,0))$.\\
+\code{orders} & 22 & ordres distincts / 100, part de répétitions, part d'ordres à plusieurs événements, $\max N_t/100$, même ordre que l'événement précédent, moyenne de $\log(1+g)$, répétitions sur une autre venue, parts de première apparition A/D/U, matrice $3\times3$ des transitions $a^{\leftarrow}_t\to a_t$, part de trades parmi D et parmi U, « ajouté puis supprimé » observé.\\
+\code{book\_dyn} & 10 & moyenne, moyenne absolue et écart-type de $I$ ; parts de changement du bid, de l'ask ; persistance du signe du flux ; changements de côté ; hausses et baisses de profondeur ; part de flux positifs.\\
+\code{tokens\_bow} & 24 & sac de mots : parts de action $\times$ côté $\times$ zone (dans le spread, au meilleur, proche $\le2{,}5$, loin).\\
+\code{transitions} & 36 & bigrammes : parts des couples (action, côté)$_{t-1}\to$(action, côté)$_t$.\\
+\bottomrule
+\caption{Les blocs de fenêtre (197 colonnes au total pour 6 venues).}
+\end{longtable}
+
+\begin{remarque}[Familles]
+Chaque bloc porte une \emph{famille} : relative, category, level, ticks, lots, position, orders, dynamics, tokens. La famille \code{level} sert aux augmentations (section~\ref{sec:aug}) : seules les colonnes de niveau reçoivent du bruit.
+\end{remarque}
+
+\subsection{Invariances vérifiées}
+\begin{proposition}
+Multiplier toutes les quantités ($q^b,q^a,f$) d'une fenêtre par $c>0$ laisse \code{base\_relative} inchangé, et modifie \code{levels}.
+\end{proposition}
+\begin{proof}
+Les grandeurs de \code{base\_relative} sont des rapports à des médianes de la même fenêtre (Proposition~\ref{prop:scale}), ou bien l'imbalance, homogène de degré 0. Les quantiles de $\log(1+cQ/\lot)$ dépendent de $c$.
+\end{proof}
+\noindent Les deux propriétés sont testées numériquement (fichier \code{tests/test\_lab.py}).

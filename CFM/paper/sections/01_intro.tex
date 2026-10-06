@@ -1,0 +1,47 @@
+\section{Introduction}
+
+\subsection{La question}
+Une fenêtre est une suite de cent événements de carnet : ajouts, mises à jour et suppressions d'ordres, avec l'état des meilleures limites après chaque événement. Le challenge CFM demande de dire de quel titre elle provient. La difficulté n'est pas seulement de classer : il faut le faire \emph{dans une autre période}. Le test n'a pas été tiré au hasard parmi les fenêtres du train. Il provient d'autres jours, où les prix, la liquidité affichée, la répartition des volumes entre places de cotation et la taille des ordres ont pu changer.
+
+Un bon classifieur doit donc reconnaître ce qui fait la \emph{signature} d'un titre : sa grille de prix (le tick), ses conventions de quantité (les lots), la façon dont ses ordres vivent et meurent. Il doit le faire sans s'appuyer sur ce qui ne caractérise qu'un \emph{régime} passager, comme une profondeur particulière à une période donnée.
+
+\subsection{Ce qui a changé, en une page}
+Le tableau~\ref{tab:resume} résume les différences entre le pipeline précédent et le pipeline présenté ici. La section~\ref{sec:avantapres} les détaille avec deux schémas complets.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{2.7cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+& \textbf{Avant} (V2, Reaction R1/R2, V\_init) & \textbf{Maintenant} (Signature Lab)\\
+\midrule
+Unités & Prix et tailles divisés par des médianes \emph{locales} à la fenêtre & \new{Ticks} pour les prix, \new{lots} pour les quantités : des entiers, communs à toutes les fenêtres d'un titre\\
+Événement & Vecteur de 13 à 19 réels standardisés + one-hot & \new{11 tokens discrets} (seuils fixés a priori) + 11 canaux continus\\
+Ordres & Répétition, écart depuis l'occurrence précédente & Rang de première apparition, occurrence, action précédente \emph{du même ordre}, première action ; relation « même ordre » dans l'attention\\
+Encodeur & BiGRU 48 (R2) ou Transformer hybride (V2) & Convolutions dilatées + attention relationnelle + pooling attention/moyenne/max\\
+Features de fenêtre & Moyennes et écarts-types de canaux relatifs & 11 blocs nommés, cachés et versionnés ($\sim$200 colonnes), passés par un \new{entonnoir de screening}\\
+Stress & Queue \old{haute} de profondeur, codée en dur & Queue orientée \new{vers le test} (basse), choix consigné\\
+Sélection & Validation aléatoire & Stress équilibré ; la validation aléatoire est jugée non prédictive (écart de 28 points)\\
+Sortie & $\arg\max$ des probabilités & Moyenne de 4 modèles, puis \new{équilibrage de Sinkhorn} (transductif)\\
+\midrule
+Score public & $0{,}5072$ & $0{,}5700$ (brut), $\mathbf{0{,}5958}$ (équilibré)\\
+\bottomrule
+\end{tabularx}
+\caption{Les différences essentielles.}\label{tab:resume}
+\end{table}
+
+\begin{figure}[H]
+\centering\includegraphics[width=.8\linewidth]{figures/lb_progression.png}
+\caption{Accuracy publique. Le meilleur classement est celui rapporté par l'auteur à la date de sa consultation. Ce n'est pas une valeur vérifiée ici.}
+\label{fig:lb}
+\end{figure}
+
+\subsection{Contributions et honnêteté du propos}
+\begin{enumerate}
+\item Une couche de données \emph{validée} : alignement par \code{obs\_id}, contiguïté, renumérotation des ordres qui ne conserve que les égalités (section~\ref{sec:donnees}).
+\item Une représentation en unités naturelles. Nous montrons formellement ce que la normalisation par médiane locale efface (section~\ref{sec:unites}).
+\item Des tokens d'événements sans aucun seuil appris, et des statistiques de parcours d'ordres calculées de façon vectorisée et exacte (section~\ref{sec:ordres}).
+\item Un entonnoir de screening : utilité contre dérive, AUC adversariale, ajout et retrait réentraînés, intervalles appariés (section~\ref{sec:screening}).
+\item SignatureNet, décrit équation par équation, avec un décompte exact de ses paramètres (section~\ref{sec:signaturenet}).
+\item La correction de prior par Sinkhorn : dérivation, convergence, conditions de validité, effet observé (section~\ref{sec:sinkhorn}).
+\end{enumerate}
+\noindent Ce que ce document \emph{ne} prétend \emph{pas}. Les $+6{,}3$ points du premier run mêlent représentation, architecture et ensemble : un seul score public ne permet pas de les séparer. Les gains de validation ne sont pas des gains de test. L'équilibrage suppose un test équilibré entre titres et utilise les entrées du test : sa conformité au règlement est à vérifier. Enfin, les résultats synthétiques cités en annexe valident le logiciel, jamais la performance.

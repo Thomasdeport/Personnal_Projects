@@ -1,0 +1,121 @@
+\section{SignatureNet}\label{sec:signaturenet}
+
+Fichier \code{cfm/neural/models.py}. Dimensions de la configuration de base : $d=96$, $H=4$ têtes, 2 blocs convolutifs, 2 blocs d'attention, contexte $D_c=79$, $d_c=64$, dropout $p=0{,}15$.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=2pt, minimum height=7mm, align=center, font=\scriptsize, fill=#1!10, draw=#1!70},
+  box/.default=blu, ar/.style={-{Stealth[length=2mm]}, thick, gray!70}, node distance=4mm]
+\node[box=gry, text width=2.6cm] (tok) {11 tokens $(B,100,11)$};
+\node[box=gry, text width=2.6cm, below=2mm of tok] (cont) {11 canaux $(B,100,11)$};
+\node[box=blu, right=6mm of tok, yshift=-4.5mm, text width=2.8cm] (emb) {$\sum_j E_j[\cdot]+W_{\text{in}}x+P_t$\\LN, dropout\\$(B,100,96)$};
+\node[box=blu, right=of emb, text width=2.2cm] (conv) {2 $\times$ ConvBlock\\noyau 5, dil.\ 1, 2};
+\node[box=new, right=of conv, text width=2.6cm] (rel) {2 $\times$ RelBlock\\4 têtes, $+\beta_h S_{ij}$};
+\node[box=blu, right=of rel, text width=2.2cm] (pool) {pool attn $\oplus$ moy $\oplus$ max\\LN, $288\to96$};
+\node[box=gry, below=12mm of conv, text width=2.6cm] (ctx) {contexte $(B,79)$};
+\node[box=ora, right=of ctx, text width=2.6cm] (mlp) {MLP $79\to128\to64$};
+\node[box=ora, text width=2.2cm] (head) at (pool |- mlp) {fusion\\$160\to96\to24$};
+\node[right=4mm of head, font=\scriptsize] (out) {$\softmax$};
+\draw[ar] (tok.east) -- (emb.west|-tok.east); \draw[ar] (cont.east) -- (emb.west|-cont.east);
+\draw[ar] (emb) -- (conv); \draw[ar] (conv) -- (rel); \draw[ar] (rel) -- (pool);
+\draw[ar] (ctx) -- (mlp); \draw[ar] (pool) -- (head); \draw[ar] (mlp) -- (head);
+\draw[ar] (head) -- (out);
+\node[font=\tiny, text=gray, above=1mm of rel] {$S_{ij}=\ind{\rho_i=\rho_j,\ i\ne j}$};
+\end{tikzpicture}
+\caption{Architecture de SignatureNet. En vert : le seul composant relationnel (le biais « même ordre »).}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Encodage des événements}\label{sec:embed}
+Soient $T=11$ tokens $z_{t,1},\dots,z_{t,T}$ (cardinalités $C_j$), $c_t\in\R^{11}$ les canaux continus standardisés et $P\in\R^{L\times d}$ une position apprise. L'entrée de l'encodeur est
+\begin{equation}
+x^{(0)}_t=\operatorname{Dropout}\Big(\LN\Big(P_t+\sum_{j=1}^{T}E_j[z_{t,j}]+W_{\text{in}}c_t+b_{\text{in}}\Big)\Big)\in\R^{d},\qquad E_j\in\R^{C_j\times d}.
+\end{equation}
+La somme plutôt que la concaténation reprend le choix des Transformers de langue (mot + position + segment). Elle coûte $d\sum_jC_j=96\times66$ paramètres. Les interactions entre tokens sont apprises plus loin, par les non-linéarités.
+
+\paragraph{Standardisation.} Pour chaque canal $k$, $\mu_k$ et $\sigma_k$ sont estimés sur les événements des fenêtres du fit uniquement (refit : tous les labels). On applique $c_{t,k}\leftarrow\operatorname{clip}\big((c_{t,k}-\mu_k)/\sigma_k,-8,8\big)$, et NaN $\to0$.
+
+\subsection{Blocs convolutifs dilatés}
+Pour $\ell=0,1$, avec une dilatation $\delta_\ell=2^\ell$ et un noyau de taille 5 :
+\begin{align}
+u&=\operatorname{Conv1d}_{5,\delta_\ell}\big(\LN(x^{(\ell)})\big),\qquad
+\big[\operatorname{Conv1d}_{5,\delta}(y)\big]_t=\sum_{k=-2}^{2}K_k\,y_{t+k\delta}+b,\\
+x^{(\ell+1)}&=x^{(\ell)}+\operatorname{Dropout}\big(W_\ell\,\GELU(u)+b_\ell\big),
+\end{align}
+avec un remplissage nul de $2\delta$ de chaque côté (longueur conservée).
+
+\begin{proposition}[Champ réceptif]
+Après les deux blocs, la sortie à la position $t$ dépend des entrées $t-6,\dots,t+6$ : 13 événements.
+\end{proposition}
+\begin{proof}
+Un noyau de taille 5 et de dilatation $\delta$ élargit le champ de $4\delta$. Le champ vaut donc $1+4\cdot1+4\cdot2=13$. Les connexions résiduelles et les couches linéaires par position ne l'élargissent pas.
+\end{proof}
+
+\subsection{Attention relationnelle « même ordre »}
+Soit $S\in\{0,1\}^{L\times L}$, $S_{ij}=\ind{\rho_i=\rho_j}\cdot\ind{i\neq j}$ : 1 si deux événements \emph{distincts} concernent le même ordre. Pour un bloc et une tête $h$, avec $d_h=d/H=24$ :
+\begin{align}
+[Q_h,K_h,V_h]&=\LN(x)\,W^{qkv}_h,\\
+A_h&=\softmax_j\Big(\frac{Q_hK_h^\top}{\sqrt{d_h}}+\beta_h\,S\Big),\label{eq:relattn}\\
+x&\leftarrow x+\operatorname{Dropout}\Big(\big[A_1V_1\ \|\ \cdots\ \|\ A_HV_H\big]W^{o}\Big),\\
+x&\leftarrow x+\operatorname{Dropout}\Big(W_2\,\operatorname{Dropout}\big(\GELU(W_1\LN(x))\big)\Big),\qquad W_1\in\R^{d\times2d}.
+\end{align}
+$\beta_h\in\R$ est \emph{appris}, et initialisé à 0.
+\begin{itemize}
+\item À l'initialisation, \eqref{eq:relattn} est l'attention standard.
+\item Si suivre les ordres aide la perte, le gradient
+\begin{equation}
+\frac{\partial\mathcal{L}}{\partial\beta_h}=\sum_{i,j}\frac{\partial\mathcal{L}}{\partial\text{logit}_{h,ij}}\,S_{ij}
+\end{equation}
+pousse $\beta_h$ vers des valeurs positives : l'événement $i$ porte alors plus d'attention aux autres événements de son ordre.
+\item $\beta_h<0$ correspond au cas inverse : la tête apprend à regarder \emph{ailleurs} que l'ordre courant.
+\end{itemize}
+Le biais n'utilise que $S$, donc que des égalités d'identifiants (Proposition~\ref{prop:bij}). C'est une forme particulière de biais relationnel appris, dans l'esprit des représentations relatives de \cite{shaw}. La variante \code{signature\_no\_bias} retire $\beta$. Au run 1, cette suppression ne change rien de mesurable (section~\ref{sec:resultats}).
+
+\subsection{Pooling}
+Avec $x\in\R^{L\times d}$ en sortie d'encodeur :
+\begin{align}
+\omega_t&=\softmax_t(w_p^\top x_t+b_p),\qquad \text{pool}_{\text{attn}}=\sum_t\omega_tx_t,\\
+z_{\text{seq}}&=\GELU\Big(W_s\,\LN\big[\text{pool}_{\text{attn}}\ \|\ \tfrac1L\textstyle\sum_tx_t\ \|\ \max_tx_t\big]+b_s\Big)\in\R^{d}.
+\end{align}
+La moyenne mesure la \emph{fréquence} d'un motif, le maximum sa \emph{plus forte occurrence}, et le pooling attentionnel les événements jugés \emph{importants}.
+
+\subsection{Contexte et fusion}
+\begin{align}
+z_{\text{ctx}}&=\GELU\big(W_{c2}\operatorname{Dropout}(\GELU(W_{c1}u+b_{c1}))+b_{c2}\big)\in\R^{64},\qquad u\in\R^{79}\ \text{(blocs standardisés)},\\
+\text{logits}&=W_{h2}\operatorname{Dropout}\big(\GELU(W_{h1}[z_{\text{seq}}\,\|\,z_{\text{ctx}}]+b_{h1})\big)+b_{h2}\in\R^{24} .
+\end{align}
+Le contexte apporte des statistiques globales, faciles à calculer mais difficiles à reconstruire par lecture séquentielle, comme « 85\,\% du temps à 1 tick ». Les blocs utilisés sont \code{levels}, \code{ticks}, \code{lots}, \code{position}, \code{orders} et \code{cat\_freq}, soit $7+14+9+15+22+12=79$ colonnes.
+
+\subsection{Encodeurs de contrôle}
+Le BiGRU (\code{control\_gru}, \code{gru\_wide}) remplace convolutions et attention par
+\begin{align}
+r_t&=\sigma(W_rx_t+U_rh_{t-1}+b_r),\quad z_t=\sigma(W_zx_t+U_zh_{t-1}+b_z),\\
+\tilde h_t&=\tanh(W_nx_t+b_n+r_t\odot(U_nh_{t-1}+b'_n)),\quad h_t=(1-z_t)\odot\tilde h_t+z_t\odot h_{t-1},
+\end{align}
+dans les deux sens, avec $d/2$ unités par sens. \code{control\_gru} a de plus une tête linéaire $[z_{\text{seq}}\|z_{\text{ctx}}]\to24$.
+
+\subsection{Décompte exact des paramètres}
+\begin{table}[H]\centering\small
+\begin{tabular}{lrl}
+\toprule
+Module & Paramètres & Calcul\\
+\midrule
+Position $P$ & 9\,600 & $100\times96$\\
+Embeddings & 6\,336 & $66\times96$\\
+Projection continue & 1\,152 & $11\times96+96$\\
+LN d'entrée & 192 & $2\times96$\\
+2 ConvBlocks & 111\,360 & $2\times(192+96\cdot96\cdot5+96+96\cdot96+96)$\\
+2 RelBlocks & 149\,576 & $2\times(384+27\,936+9\,312+37\,152+4)$\\
+Pooling attentionnel & 97 & $96+1$\\
+Projection de pooling & 28\,320 & $576+288\cdot96+96$\\
+Contexte & 18\,496 & $(79\cdot128+128)+(128\cdot64+64)$\\
+Tête & 17\,784 & $(160\cdot96+96)+(96\cdot24+24)$\\
+\midrule
+\textbf{Total \code{signature}} & \textbf{342\,913} & \code{no\_bias} : $-8$ ($\beta$)\\
+\code{control\_gru} & 110\,105 & GRU $2\times3\times(48\cdot96+48\cdot48+2\cdot48)=42\,048$\\
+\code{gru\_wide} ($d=176$) & 331\,625 & contrôle à capacité égale\\
+\bottomrule
+\end{tabular}
+\caption{Paramètres par module. Les totaux coïncident avec ceux mesurés dans le run Kaggle.}
+\end{table}

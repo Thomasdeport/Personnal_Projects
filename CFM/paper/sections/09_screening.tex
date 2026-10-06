@@ -1,0 +1,44 @@
+\section{L'entonnoir de screening}\label{sec:screening}
+
+Tester une feature en réentraînant un réseau coûte environ 10 minutes de GPU. L'entonnoir (\code{cfm/screen.py}) commence par des tests en secondes et ne réserve le réentraînement qu'aux blocs qui ont passé les étapes précédentes.
+
+\subsection{Étape 1 : utilité contre dérive, colonne par colonne}
+\paragraph{Utilité : rapport de corrélation $\eta^2$.} Pour une colonne $x$ sur le fit (sous-échantillon stratifié de $60\,000$ fenêtres), avec $\bar x$ la moyenne globale et $\bar x_c$ la moyenne de la classe $c$ :
+\begin{equation}
+\eta^2(x)=\frac{\sum_c n_c(\bar x_c-\bar x)^2}{\sum_i(x_i-\bar x)^2}\in[0,1].
+\end{equation}
+C'est la part de variance expliquée par le titre : $1$ si chaque titre a une valeur propre, $0$ si la colonne est indépendante du titre en moyenne.
+
+\paragraph{Dérive : statistique de Kolmogorov--Smirnov.} Entre le train $F$ et le test $G$ (jusqu'à $60\,000$ fenêtres chacun) :
+\begin{equation}
+\mathrm{KS}(x)=\sup_u|F_x(u)-G_x(u)|,\qquad\text{et}\quad\text{shift}_{\mathrm{sd}}=\frac{\bar x_{\text{te}}-\bar x_{\text{tr}}}{\operatorname{sd}_{\text{tr}}(x)} .
+\end{equation}
+
+\paragraph{Redondance.} $\max_j|\operatorname{corr}(x,z_j)|$ sur les colonnes $z_j$ de la base. Le tableau signale aussi la part de NaN et la part de la valeur modale (colonne quasi constante).
+
+\paragraph{Lecture de la carte $(\mathrm{KS},\eta^2)$.} En haut à gauche : utile et stable, on garde. En haut à droite : utile mais sensible au régime ; on garde et on rend robuste. En bas : inutile seul ; seul le réentraînement tranche.
+
+\subsection{Étape 2 : AUC adversariale par bloc}
+Pour un bloc $\mathcal{B}$, on tire $30\,000$ fenêtres du train (étiquette 0) et $30\,000$ du test (étiquette 1). On entraîne un XGBoost à 200 arbres, et l'on calcule l'AUC des prédictions hors pli (3 plis) :
+\begin{equation}
+\mathrm{AUC}(\mathcal{B})=\Pr\big(\hat s(x_{\text{te}})>\hat s(x_{\text{tr}})\big).
+\end{equation}
+$0{,}5$ : indiscernable ; $1$ : parfaitement séparable. Une AUC élevée \emph{localise} le décalage. Elle n'impose pas de supprimer le bloc : un bloc décalé peut rester l'information la plus utile.
+
+\subsection{Étape 3 : ajout réentraîné (forward)}
+Soit une base $\mathcal{B}_0$ (\code{base\_relative} + \code{cat\_freq}, l'approximation des résumés précédents). Pour chaque candidat $\mathcal{B}$, on entraîne \emph{le même} modèle, avec les mêmes fenêtres d'entraînement et la même graine, sur $\mathcal{B}_0$ puis sur $\mathcal{B}_0\cup\mathcal{B}$. On évalue ensuite sur les \emph{mêmes} fenêtres de valid et de stress. Avec $C_i^{0},C_i^{1}\in\{0,1\}$ les indicatrices de réussite sur la fenêtre $i$ :
+\begin{equation}
+\hat\Delta=\frac1n\sum_{i=1}^n\big(C_i^{1}-C_i^{0}\big),\qquad
+\hat\Delta^{*(b)}=\frac1n\sum_{i=1}^n\big(C_{j_i^{(b)}}^{1}-C_{j_i^{(b)}}^{0}\big),\ j^{(b)}\sim\mathcal{U}\{1..n\}^n,
+\end{equation}
+et l'intervalle à 95\,\% est $[\hat\Delta^{*}_{(2{,}5\,\%)},\hat\Delta^{*}_{(97{,}5\,\%)}]$ sur $B=1\,000$ tirages. L'appariement retire la variance due à la difficulté propre de chaque fenêtre. L'intervalle reste optimiste à cause de la dépendance intra-jour (section~\ref{sec:dependance}).
+
+\paragraph{Règle de rétention (écrite avant les résultats).} Un bloc est gardé si $\hat\Delta^{*}_{(2{,}5\,\%)}>0$ en validation pour toutes les graines \emph{et} $\hat\Delta_{\text{stress}}\ge-0{,}01$.
+
+\paragraph{Modèle de screening.} XGBoost \code{multi:softprob}, profondeur 6, $\eta=0{,}1$, sous-échantillonnage 0,8 des lignes et 0,6 des colonnes, jusqu'à 2\,000 arbres. L'arrêt anticipé (40 tours) se fait sur une tranche \emph{interne} de 10\,\% du fit, jamais sur la validation, qui reste un score propre. Pour la vitesse, le screening utilise 50\,\% du fit.
+
+\subsection{Étape 4 : retrait réentraîné (ablation)}
+Sur l'ensemble retenu $\mathcal{S}$, on compare $\mathcal{S}$ et $\mathcal{S}\setminus\{\mathcal{B}\}$, de la même façon appariée. Un retrait qui ne coûte rien signale un bloc redondant avec les autres. Un masquage à l'inférence, au contraire, ne serait qu'un test de \emph{sensibilité} : il ne dit pas ce qu'un modèle entraîné sans le bloc aurait appris à la place.
+
+\subsection{Sélection gloutonne}
+\code{greedy} ajoute à chaque pas le meilleur candidat, tant que $\hat\Delta\ge0{,}002$ et que la borne basse est positive. La validation devient alors un score de \emph{sélection} : l'ensemble obtenu doit être reconfirmé sur le stress et sur une autre graine.

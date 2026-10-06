@@ -1,0 +1,67 @@
+\section{Avant / maintenant : deux pipelines côte à côte}\label{sec:avantapres}
+
+Cette section sert de carte. Les deux schémas suivent une fenêtre de la lecture du CSV jusqu'à la soumission. Les numéros de section renvoient aux définitions précises.
+
+\tikzset{
+  stage/.style={draw, rounded corners=2pt, align=left, font=\scriptsize, inner sep=3pt, text width=#1},
+  stage/.default=5.6cm,
+  oldst/.style={stage=5.6cm, fill=old!8, draw=old!70},
+  newst/.style={stage=5.6cm, fill=new!8, draw=new!70},
+  arr/.style={-{Stealth[length=2mm]}, thick, gray!70},
+  lbl/.style={font=\scriptsize\bfseries, text=gray!80!black}
+}
+
+\begin{figure}[p]
+\centering
+\begin{tikzpicture}[node distance=3.2mm]
+% ---------- AVANT ----------
+\node[font=\bfseries, text=old] (h1) {AVANT (Reaction R1/R2, référence V2)};
+\node[oldst, below=of h1] (o1) {\textbf{1. Lecture} \\ CSV → fenêtres de 100 lignes. Catégories one-hot (R2) ou embeddings de dim.~8 (V2). Tailles négatives remplacées par 0.};
+\node[oldst, below=of o1] (o2) {\textbf{2. Échelles locales} \\ $s^\star=\Med(\text{spread}>0)$, $d^\star=\Med(\text{profondeur})$, $f^\star=\Med|f|$ \emph{de la fenêtre}. \\ Toutes les grandeurs sont divisées par ces médianes : $\log(1+\text{spread}/s^\star)$, $\operatorname{asinh}(\Delta\text{mid}/s^\star)$, etc.};
+\node[oldst, below=of o2] (o3) {\textbf{3. Canaux par événement} (19 réels) \\ spread, trajectoire et variation du mid, position du prix, imbalance, profondeur relative et variation, flux relatif et variation, ordre déjà vu, même ordre que l'événement précédent, fraction invalide, quote-flow, 6 historiques d'ordre.};
+\node[oldst, below=of o3] (o4) {\textbf{4. Contexte de fenêtre} \\ moyennes et écarts-types des canaux, log-spread, log-profondeur, échelle de flux, offset du mid, réactions régularisées vers un prior.};
+\node[oldst, below=of o4] (o5) {\textbf{5. Split} \\ train / valid / stress / audit. Stress = queue \old{\textbf{haute}} de profondeur, codée en dur (\code{STRESS\_TAIL='high'}).};
+\node[oldst, below=of o5] (o6) {\textbf{6. Modèle} \\ BiGRU (48) → pooling moyenne + max → 64 \\ contexte MLP → 32 \\ fusion 96 → 64 → 24 \quad($\approx$ 39\,k paramètres). \\ Option : auxiliaire de mouvement du mid.};
+\node[oldst, below=of o6] (o7) {\textbf{7. Sélection} \\ meilleure époque en validation aléatoire ; LR fixe ; 24 à 60 époques.};
+\node[oldst, below=of o7] (o8) {\textbf{8. Sortie} \\ ensemble de seeds / variantes (V2), $\arg\max$.};
+\node[font=\scriptsize, below=1mm of o8, text width=5.6cm, align=center] (os) {valid R1 $\approx 0{,}55$ — LB record $\mathbf{0{,}5072}$ (V2)};
+\foreach \a/\b in {o1/o2,o2/o3,o3/o4,o4/o5,o5/o6,o6/o7,o7/o8} \draw[arr] (\a) -- (\b);
+
+% ---------- MAINTENANT ----------
+\node[font=\bfseries, text=new, right=1.4cm of h1] (h2) {MAINTENANT (Signature Lab)};
+\node[newst, below=of h2] (n1) {\textbf{1. Cache brut validé} (§\ref{sec:donnees}) \\ contiguïté et unicité des \code{obs\_id}, labels alignés \emph{par identifiant}, $o_t\mapsto$ rang de 1\textsuperscript{re} apparition, catégories avec modalité inconnue, \new{tick estimé puis vérifié}. Valeurs brutes conservées, y compris les tailles négatives.};
+\node[newst, below=of n1] (n2) {\textbf{2. Unités naturelles} (§\ref{sec:unites}) \\ prix en \new{ticks} $\tick=0{,}01$ ; quantités en \new{lots} $\lot=100$. \\ spread $S_t\in\N$, $\Delta$mid en demi-ticks, distance au meilleur prix \emph{de son côté} $D_t$, flux $f_t/\lot$.};
+\node[newst, below=of n2] (n3) {\textbf{3. Événement = 11 tokens + 11 canaux} (§\ref{sec:ordres}) \\ action, côté, trade, venue, zone de prix $D_t$, taille en lots, spread en ticks, $\Delta$mid, occurrence de l'ordre, action précédente \emph{du même ordre}, signe du flux. \\ \new{Seuils fixés a priori} ; canaux continus relatifs et en unités naturelles.};
+\node[newst, below=of n3] (n4) {\textbf{4. Blocs de fenêtre} (§\ref{sec:blocs}) \\ 11 blocs nommés (\code{ticks}, \code{lots}, \code{position}, \code{orders}, \code{levels}…), cache par empreinte du code. \\ \new{Entonnoir} : utilité $\eta^2$ / dérive KS → AUC adversariale → ajout réentraîné → retrait réentraîné (§\ref{sec:screening}).};
+\node[newst, below=of n4] (n5) {\textbf{5. Split} (§\ref{sec:protocole}) \\ audit tiré \emph{en premier} (seed dédiée) ; stress = queue \new{\textbf{basse}}, orientée par la médiane test ; valid ; fit.};
+\node[newst, below=of n5] (n6) {\textbf{6. SignatureNet} (§\ref{sec:signaturenet}) \\ $\sum$ embeddings + linéaire + position → 2 conv. dilatées → 2 attentions avec biais $\beta_h\cdot[\text{même ordre}]$ → pooling attention/moy/max \\ ⊕ contexte 79 → 128 → 64 ; fusion 160 → 96 → 24 \quad (342\,913 paramètres).};
+\node[newst, below=of n6] (n7) {\textbf{7. Entraînement et sélection} (§\ref{sec:entrainement}) \\ AdamW, warmup + cosinus, 40 époques ; époque choisie en valid ; \new{configs comparées sur le stress équilibré} ; refit sur tous les labels.};
+\node[newst, below=of n7] (n8) {\textbf{8. Sortie} (§\ref{sec:sinkhorn}) \\ moyenne de 2 configs $\times$ 2 seeds → \new{équilibrage de Sinkhorn} (coefficient $w_c$ par titre) → $\arg\max$.};
+\node[font=\scriptsize, below=1mm of n8, text width=5.6cm, align=center] (ns) {valid 0,85 (non prédictif) — LB $\mathbf{0{,}5700}$ puis $\mathbf{0{,}5958}$};
+\foreach \a/\b in {n1/n2,n2/n3,n3/n4,n4/n5,n5/n6,n6/n7,n7/n8} \draw[arr] (\a) -- (\b);
+\foreach \a/\b in {o1/n1,o2/n2,o3/n3,o4/n4,o5/n5,o6/n6,o7/n7,o8/n8} \draw[dashed, gray!50] (\a.east) -- (\b.west);
+\end{tikzpicture}
+\caption{Les deux pipelines, étape par étape. Les pointillés relient les étapes homologues.}
+\label{fig:avantapres}
+\end{figure}
+
+\subsection{Comparaison détaillée par étape}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}p{4.6cm}>{\raggedright\arraybackslash}p{4.6cm}>{\raggedright\arraybackslash}p{3.2cm}}
+\toprule
+\textbf{Étape} & \textbf{Avant} & \textbf{Maintenant} & \textbf{Pourquoi}\\
+\midrule\endhead
+Spread & $\log(1+S/s^\star)$, $s^\star$ = médiane locale : un spread constant à 1 tick donne $\log 2$, comme un spread constant à 5 ticks & $S_t=(\alpha_t-b_t)/\tick\in\{0,1,2,\dots\}$ ; parts de fenêtre à 1, 2, 3--4, $\ge5$ ticks ; token & Le régime de tick est une signature (η² $\approx 0{,}5$, KS $\approx 0{,}02$, §\ref{sec:resultats})\\
+Prix de l'événement & $\operatorname{asinh}((p-m)/s^\star)$, relatif au \emph{mid} & $D_t$ = distance en ticks au meilleur prix \emph{de son côté} : dans le spread / au meilleur / 1 / 2 / 3--5 / $>5$ & Un ordre « 2 ticks derrière le meilleur ask » décrit un comportement, quelle que soit la largeur du spread\\
+Quantités & $\log(1+q/d^\star)$ & $q/\lot$ (lots), parts de lots ronds / odd lots / mixtes ; token de taille & Les conventions de lot sont propres au titre ; leur dérive est mesurée explicitement\\
+Ordres & « déjà vu », « même que précédent », écart, âge, dernière action & + rang de 1\textsuperscript{re} apparition, première action, \emph{action précédente du même ordre}, nombre d'événements de l'ordre ; relation « même ordre » dans l'attention & Le cycle de vie A→U→D d'un ordre est une empreinte, même tronquée\\
+Catégories & one-hot ou embedding dim.~8 & tokens additionnés en dim.~96, modalité 0 = inconnu & Toutes les entrées discrètes sont traitées pareil\\
+Tailles $<0$ & remplacées par 0 & conservées brutes ; NaN dans les grandeurs dérivées ; fréquence mesurée & Une convention ne doit pas créer de fausse valeur\\
+Contexte & mean/std de canaux relatifs & 11 blocs nommés (\textasciitilde 200 colonnes), retenus par l'entonnoir & Hypothèses testables une par une\\
+Stress & queue haute & queue basse, orientée vers le test (transductif, consigné) & Le test est moins profond : médiane $\log(1+\text{prof.}/\lot)$ de 1,84 (train) contre 1,70 (test)\\
+Encodeur & BiGRU 48 & conv.\ dilatées + attention relationnelle & Motifs locaux et relations longues séparés\\
+Sélection & valid aléatoire & stress équilibré + indicateurs sans labels & Valid 0,85 contre LB 0,57\\
+Sortie & $\arg\max$ & Sinkhorn puis $\arg\max$ & Prédictions biaisées vers les titres peu profonds\\
+\bottomrule
+\caption{Comparaison détaillée. $s^\star$, $d^\star$ : médianes locales de la fenêtre.}
+\end{longtable}

@@ -1,0 +1,70 @@
+\section{Couche de données : un cache brut validé}\label{sec:donnees}
+
+Cette section décrit \code{cfm/io.py}. Son principe : aucune transformation \emph{statistique} ici. On lit, on vérifie, on type et on aligne. Ce qui est calculé ensuite dépend de ce cache, et toute incohérence doit y être arrêtée.
+
+\subsection{Contrats vérifiés à la lecture}
+Le CSV est lu par blocs de $20\,000$ fenêtres ($2\cdot10^6$ lignes). Pour chaque bloc de $m$ fenêtres, on remodèle les identifiants en matrice $I\in\Z^{m\times L}$ et on exige :
+\begin{equation}
+\forall i,\ \forall t:\ I_{i,t}=I_{i,1}.
+\end{equation}
+Autrement dit, chaque groupe de 100 lignes consécutives porte un seul \code{obs\_id}. Comme la taille de bloc est un multiple de 100 et que le nombre total de lignes l'est aussi (vérifié en première passe), aucune fenêtre ne peut chevaucher deux blocs. On vérifie ensuite l'unicité des \code{obs\_id} sur tout le fichier, puis l'égalité \emph{ensembliste} entre les identifiants de \code{X\_train} et de \code{y\_train}. Les labels sont alignés \emph{par identifiant} :
+\begin{equation}
+y_i=\texttt{y\_train}[\texttt{obs\_id}=I_{i,1}],
+\end{equation}
+et non par position de ligne : un \code{y\_train} mélangé donne le même résultat. C'est l'objet d'un test de contrat.
+
+\subsection{Catégories}
+Les catégories sont normalisées : chaîne, espaces retirés, majuscules, suffixe « .0 » retiré. Elles sont ensuite codées avec des vocabulaires \emph{fixes} pour action, côté et trade : $A\mapsto1$, $D\mapsto2$, $U\mapsto3$ ; $A\mapsto1$, $B\mapsto2$ ; \code{FALSE}$\mapsto1$, \code{TRUE}$\mapsto2$. Le vocabulaire des venues est construit sur le train uniquement, sans labels. Toute valeur hors vocabulaire reçoit le code $0$ (« inconnu »), et son nombre d'occurrences par partition est consigné dans \code{meta.json}.
+
+\subsection{Identité des ordres : ne garder que les égalités}
+Les \code{order\_id} sont des entiers anonymisés, locaux à la fenêtre. La distance numérique entre deux identifiants n'a pas de sens économique établi. Seule l'égalité en a un : « c'est le même ordre ». On remplace donc $o_t$ par son \emph{rang de première apparition}.
+
+\begin{definition}[Rang de première apparition]
+Pour une fenêtre $(o_1,\dots,o_L)$, notons $\phi(t)=\min\{u\le t: o_u=o_t\}$ la première position de l'ordre de l'événement $t$. On pose
+\begin{equation}
+\rho(t)=\big|\{\phi(u):u\le t\}\big|-1,
+\end{equation}
+c'est-à-dire le nombre d'ordres distincts apparus avant celui de $t$. Les identifiants manquants reçoivent chacun un rang propre : ils ne sont jamais égaux entre eux.
+\end{definition}
+
+\begin{proposition}[Invariance par renumérotation]\label{prop:bij}
+Soit $\pi$ une bijection quelconque de l'ensemble des identifiants. Alors la suite des rangs calculée sur $(\pi(o_1),\dots,\pi(o_L))$ est identique à celle calculée sur $(o_1,\dots,o_L)$.
+\end{proposition}
+\begin{proof}
+$\phi$ ne dépend que des égalités $o_u=o_t$, et $\pi$ les préserve puisqu'elle est injective. $\rho$ est une fonction de $\phi$ seulement.
+\end{proof}
+\noindent Conséquence : aucun composant du modèle ne peut exploiter la valeur des identifiants. Le test de contrat applique des renumérotations aléatoires et vérifie l'égalité exacte.
+
+\paragraph{Calcul vectorisé.} Pour un bloc de $m$ fenêtres, on forme une clé entière unique par couple (fenêtre, identifiant) :
+\begin{equation}
+\kappa_{i,t}=i\cdot2^{32}+(\tilde o_{i,t}+2^{31}),\qquad \tilde o_{i,t}=\begin{cases}o_{i,t}&\text{si défini}\\-1-t&\text{sinon,}\end{cases}
+\end{equation}
+puis \code{np.unique(return\_index, return\_inverse)} donne, pour chaque clé distincte, sa première position $\phi$. Un tri lexicographique par (fenêtre, $\phi$) suivi d'un compteur remis à zéro à chaque nouvelle fenêtre donne $\rho$. Le coût est $O(mL\log(mL))$, sans boucle Python.
+
+\subsection{Estimation et vérification du tick}
+\begin{algo}[H]
+\caption{Estimation du tick (\code{estimate\_tick})}
+\begin{algobox}
+\item Lire les $2\cdot10^6$ premières lignes du train. Calculer les spreads $\alpha_t-b_t$, arrondis à $10^{-6}$, strictement positifs.
+\item Garder les valeurs dont la fréquence est d'au moins $1\,\%$ des spreads positifs. Poser $\hat\tick$ = la plus petite d'entre elles.
+\item Pour $x\in\{p,b,\alpha\}$, mesurer la part hors grille : $\frac1n\sum\ind{|x/\hat\tick-\operatorname{round}(x/\hat\tick)|>10^{-3}}$.
+\item \code{grid\_ok} $\iff$ part hors grille $<1\,\%$ pour $b$ et $\alpha$. Sinon, avertir : les blocs en ticks deviennent des approximations.
+\end{algobox}
+\end{algo}
+\noindent Le recentrage soustrait $b_1$, qui est lui-même sur la grille, donc les offsets restent des multiples entiers de $\tick$. C'est ce qui rend les quantités « en ticks » \emph{exactement} entières (modulo l'arrondi flottant), alors qu'une division par une médiane ne l'est pas.
+
+\subsection{Disposition du cache}
+\begin{center}\small
+\begin{tabular}{lll}
+\toprule
+Fichier & Forme, type & Contenu\\
+\midrule
+\code{\{split\}\_num.npy} & $(n,100,6)$ float32 & $p,b,\alpha,q^b,q^a,f$ bruts (rien n'est écrêté)\\
+\code{\{split\}\_cat.npy} & $(n,100,4)$ int8 & venue, action, côté, trade ; 0 = inconnu\\
+\code{\{split\}\_oid.npy} & $(n,100)$ int8 & $\rho(t)$\\
+\code{\{split\}\_ids.npy} & $(n,)$ int64 & \code{obs\_id} dans l'ordre du fichier\\
+\code{train\_y.npy} & $(n,)$ int16 & indice de classe dans \code{meta['classes']}\\
+\bottomrule
+\end{tabular}
+\end{center}
+Le cache est lié à l'empreinte des fichiers sources (chemin, taille). Un cache construit sur d'autres CSV est refusé.

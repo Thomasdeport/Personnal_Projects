@@ -1,0 +1,71 @@
+\section{Round 2 : voisins et indicateurs sans labels}\label{sec:voisins}
+
+Cette section décrit des outils implémentés en v0.2.0 mais \emph{pas encore exécutés sur les vraies données}. Les seuls chiffres réels sont ceux du test préliminaire de la section~\ref{sec:probaspace}.
+
+\subsection{Faire voter les fenêtres d'un même titre-jour}
+Le test contient environ 20 fenêtres par titre et par jour, et elles partagent l'effet $\eta_{c,d}$ de~\eqref{eq:hier}. Le mécanisme qui gonflait la validation aléatoire (reconnaître le jour) peut être retourné en notre faveur : si une représentation $z$ rapproche les fenêtres d'un même titre-jour, une fenêtre ambiguë peut être corrigée par ses voisines plus nettes.
+
+\paragraph{Graphe des $k$ plus proches voisins.} Pour un ensemble de fenêtres (le test entier, ou valid $\cup$ stress pour l'évaluation), on normalise $\hat z_i=z_i/\|z_i\|$, on note $\mathcal{N}_k(i)$ les $k$ indices maximisant $\hat z_i^\top\hat z_j$ avec $j\neq i$, et l'on forme $A_{ij}=\frac1k\ind{j\in\mathcal{N}_k(i)}$. Le calcul est exact, par blocs de 4\,096 lignes, sur GPU si disponible.
+
+\paragraph{Propagation.} Pour $\alpha\in[0,1)$ :
+\begin{equation}
+Q^{(0)}=P,\qquad Q^{(n+1)}=(1-\alpha)P+\alpha AQ^{(n)} .
+\end{equation}
+\begin{proposition}
+Pour $\alpha<1$, $Q^{(n)}\to Q^{(\infty)}=(1-\alpha)(I-\alpha A)^{-1}P$.
+\end{proposition}
+\begin{proof}
+$A$ est stochastique par lignes, donc $\|A\|_\infty=1$ et $\|\alpha A\|_\infty<1$. L'itération est contractante, de point fixe unique $Q=(1-\alpha)P+\alpha AQ$. La série de Neumann $\sum_n(\alpha A)^n$ converge vers $(I-\alpha A)^{-1}$.
+\end{proof}
+\noindent C'est la propagation d'étiquettes de \cite{zhou}, appliquée à des probabilités \emph{prédites} plutôt qu'à des labels connus. Le code utilise 1 ou 5 itérations, puis renormalise les lignes et applique Sinkhorn.
+
+\paragraph{Trois représentations.}
+\begin{itemize}
+\item \code{window} : blocs \code{levels}, \code{ticks}, \code{lots}, \code{cat\_freq} et \code{position}, standardisés à l'intérieur de l'ensemble. Ce sont justement des statistiques de régime : leur dérive nuit à la classification, mais elles identifient bien le jour.
+\item \code{embedding} : $[z_{\text{seq}}\|z_{\text{ctx}}]$ des modèles, normalisé puis moyenné entre les membres. Les modèles de développement servent pour valid/stress, ceux du refit pour le test. Le code refuse d'utiliser les poids du refit sur des partitions étiquetées.
+\item \code{probs} : $\sqrt{P}$, soit une distance de Hellinger.
+\end{itemize}
+
+\paragraph{Pureté.} Avant tout lissage, on mesure la part des voisins qui appartiennent au même titre :
+\begin{equation}
+\text{pureté}@k=\frac1{nk}\sum_i\sum_{j\in\mathcal{N}_k(i)}\ind{y_j=y_i}.
+\end{equation}
+
+\paragraph{Densité et facteur $k$.} Le pool d'évaluation valid $\cup$ stress contient $25\,\%$ des fenêtres de chaque jour, soit environ 5 par titre-jour, alors que le test en contient 20. Le $k$ choisi sur le pool est donc multiplié par $4$ pour le test. C'est une \emph{hypothèse}, écrite dans le code (\code{k\_scale}).
+
+\paragraph{Règle d'adoption.} Le lissage n'est adopté que s'il améliore la précision \emph{équilibrée} sur le pool d'au moins $0{,}5$ point. Ce gain est un score de sélection, pas une estimation du gain sur le test.
+
+\subsection{Test préliminaire : l'espace des probabilités ne suffit pas}\label{sec:probaspace}
+Sur les probabilités réelles du run 1, avec des voisins dans l'espace \code{probs} :
+\begin{center}\small
+\begin{tabular}{lccc}
+\toprule
+pool valid $\cup$ stress & brut & équilibré & meilleur lissage + équilibrage\\
+\midrule
+précision & 0,8079 & 0,8281 & 0,8281\\
+\bottomrule
+\end{tabular}
+\end{center}
+C'était attendu : deux fenêtres voisines \emph{en probabilités} portent la même information, donc la propagation n'ajoute rien. L'intérêt du lissage dépend d'une représentation qui encode le \emph{jour}, ce que le round 2 mesure avec la pureté.
+
+\subsection{Indicateurs sans labels sur le test}
+Pour des probabilités test $P$ (modèle de développement) :
+\begin{align}
+\text{confiance}&=\tfrac1N\textstyle\sum_i\max_kP_{ik},\qquad
+\text{entropie}=-\tfrac1N\sum_{i,k}P_{ik}\log P_{ik},\\
+\text{KL d'équilibre}&=\textstyle\sum_k\hat\pi_k\log(K\hat\pi_k),\quad \hat\pi_k=\tfrac1N\sum_i\ind{\arg\max P_i=k},\\
+\text{accord entre graines}&=\text{accord}(m,m')\ \text{pour deux graines d'une même configuration.}
+\end{align}
+Au run 1, pour \code{signature\_s0} :
+\begin{center}\small
+\begin{tabular}{lcc}
+\toprule
+& valid & test\\
+\midrule
+confiance & 0,858 & 0,738\\
+accord entre graines & 0,845 & 0,648\\
+plus grand / plus petit nombre de prédictions par titre & $\approx1$ & 5,4\\
+\bottomrule
+\end{tabular}
+\end{center}
+Ces chiffres annonçaient, avant toute soumission, que le test serait bien plus difficile que la validation. Ils ne sont pas des accuracies. Ils ne servent à présélectionner des modèles qu'une fois \emph{ancrés} à quelques scores LB connus.

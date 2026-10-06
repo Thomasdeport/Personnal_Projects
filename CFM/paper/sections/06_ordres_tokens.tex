@@ -1,0 +1,80 @@
+\section{Parcours d'ordres et tokens d'événements}\label{sec:ordres}
+
+\subsection{Parcours d'un ordre dans une fenêtre tronquée}
+Pour l'événement $t$, notons $\mathcal{P}(t)=\{u<t:\rho(u)=\rho(t)\}$ les occurrences \emph{antérieures} du même ordre dans la fenêtre. On définit :
+\begin{align}
+\text{occurrence}\quad & n_t=|\mathcal{P}(t)|\qquad(0=\text{première fois vu}),\\
+\text{occurrence précédente}\quad & \operatorname{prev}(t)=\max\mathcal{P}(t)\quad(\text{indéfini si }n_t=0),\\
+\text{écart}\quad & g_t=t-\operatorname{prev}(t)\quad(0\text{ si }n_t=0),\\
+\text{action précédente du même ordre}\quad & a^{\leftarrow}_t=a_{\operatorname{prev}(t)}\quad(0\text{ si }n_t=0),\\
+\text{première action}\quad & a^{\circ}_t=a_{\min(\mathcal{P}(t)\cup\{t\})},\\
+\text{nombre d'événements de l'ordre}\quad & N_t=|\{u\le L:\rho(u)=\rho(t)\}| .
+\end{align}
+
+\begin{remarque}[Troncature]
+La fenêtre est un extrait. Une première apparition sous forme $U$ ou $D$ révèle un ordre créé \emph{avant} la fenêtre. Une première apparition $A$ est un ajout \emph{observé}. Aucune de ces grandeurs n'est une durée de vie, un volume initial ou une identité de participant. $g_t$ est compté en événements, pas en secondes : aucun horodatage n'est disponible.
+\end{remarque}
+
+\paragraph{Calcul exact et vectorisé.}
+On numérote les événements d'un bloc de $m$ fenêtres à plat, $j=iL+t$, et on forme la clé $k_j=128\,i+\rho_{i,t}$, avec $\rho<100<128$. Un tri \emph{stable} $\sigma$ des clés regroupe les événements de chaque (fenêtre, ordre). Comme le tri est stable et que les positions plates sont croissantes dans le temps, les occurrences d'un même ordre restent dans l'ordre chronologique. Notons $\kappa=k_{\sigma(\cdot)}$ la suite triée et $\nu_r=\ind{r=0\ \text{ou}\ \kappa_r\neq\kappa_{r-1}}$ le début de groupe. Alors
+\begin{align}
+\text{début}(r)&=\max\{r'\le r:\nu_{r'}=1\},\\
+n_{\sigma(r)}&=r-\text{début}(r),\\
+\operatorname{prev}(\sigma(r))&=\begin{cases}\sigma(r-1)&\text{si }\nu_r=0,\\\text{indéfini}&\text{sinon,}\end{cases}\\
+a^{\circ}_{\sigma(r)}&=a_{\sigma(\text{début}(r))}.
+\end{align}
+\begin{proposition}
+Ces formules donnent exactement les définitions ci-dessus.
+\end{proposition}
+\begin{proof}
+Dans un groupe (même fenêtre, même $\rho$), le tri stable conserve l'ordre croissant des positions plates, donc l'ordre chronologique. Le $r$-ième élément d'un groupe a donc $r-\text{début}(r)$ prédécesseurs dans ce groupe ; son prédécesseur immédiat est l'élément trié juste avant lui ; et le premier élément du groupe est la première apparition.
+\end{proof}
+\noindent Le test de contrat compare ces calculs à une boucle naïve sur des données aléatoires.
+
+\subsection{Tokens : discrétiser sans rien apprendre}
+\begin{definition}[Bucket à seuils fixés]
+Pour des seuils $c_1<\dots<c_J$ \emph{choisis a priori}, on pose
+\begin{equation}
+B(x;c)=\begin{cases}0&x\ \text{non fini},\\1+\#\{j:c_j\le x\}&\text{sinon,}\end{cases}\qquad B\in\{0,\dots,J+1\}.
+\end{equation}
+\end{definition}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{llcl}
+\toprule
+Token & Grandeur & Card. & Valeurs\\
+\midrule
+\code{tok\_action} & $a_t$ & 4 & inconnu, A, D, U\\
+\code{tok\_side} & $s_t$ & 3 & inconnu, A, B\\
+\code{tok\_trade} & $\tau_t$ & 3 & inconnu, non, oui\\
+\code{tok\_venue} & $v_t$ & 16 & inconnue, 6 places (réservé jusqu'à 15)\\
+\code{tok\_pos} & $B(D_t;-.5,.5,1.5,2.5,5.5)$ & 7 & ?, dans le spread, au meilleur, 1, 2, 3--5, $>5$ ticks\\
+\code{tok\_size} & $B(|F_t|;10^{-9},1^{\pm},2^+,5^+,10^+)$ & 8 & ?, 0, odd, $=1$ lot, $(1,2]$, $(2,5]$, $(5,10]$, $>10$\\
+\code{tok\_spread} & $B(S_t;.5,1.5,2.5,4.5)$ & 6 & ?, 0, 1, 2, 3--4, $\ge5$ ticks\\
+\code{tok\_dmid} & $B(h_t;-1.5,-.25,.25,1.5)$ & 6 & ?, $\le-1{,}5$, baisse, 0, hausse, $\ge1{,}5$ demi-tick\\
+\code{tok\_occ} & $1+\min(n_t,3)$ & 5 & 1\textsuperscript{re}, 2\textsuperscript{e}, 3\textsuperscript{e}, 4\textsuperscript{e}+ occurrence\\
+\code{tok\_prev\_action} & $a^{\leftarrow}_t$ & 4 & aucune, A, D, U\\
+\code{tok\_fluxsign} & $B(f_t;-10^{-12},10^{-12})$ & 4 & ?, $<0$, $0$, $>0$\\
+\bottomrule
+\end{tabular}
+\caption{Les onze tokens. $1^{\pm}$ désigne les deux seuils $1\mp10^{-9}$ qui isolent « exactement un lot ».}
+\end{table}
+
+\begin{proposition}[Absence de fuite par construction]
+L'application $e_t\mapsto(\text{tokens})$ est une fonction déterministe de l'événement, de sa fenêtre et des constantes $(\tick,\lot)$. Elle ne dépend d'aucune autre fenêtre ni d'aucun label. En particulier, elle est identique au développement, au refit et sur le test.
+\end{proposition}
+\noindent Le seul paramètre « appris » en amont est $\hat\tick$. Il est estimé sur les prix du train, sans labels, et il est vérifié égal à la grille ($0{,}01$).
+
+\paragraph{Taille du vocabulaire.} Le produit cartésien des cardinalités vaut
+\begin{equation}
+4\cdot3\cdot3\cdot16\cdot7\cdot8\cdot6\cdot6\cdot5\cdot4\cdot4= 92\,897\,280\approx 9{,}3\cdot10^{7},
+\end{equation}
+mais un événement n'est pas représenté par un mot de ce produit. Il est représenté par la \emph{somme} de 11 embeddings (section~\ref{sec:embed}), qui ne coûte que $\sum_j\text{card}_j=66$ vecteurs. Les interactions entre tokens (« une suppression, côté ask, au meilleur ») sont apprises par les couches suivantes.
+
+\subsection{Canaux continus par événement}
+En complément des tokens, chaque événement porte des canaux réels :
+\begin{align}
+\code{ev\_relative}&:\ \big(I_t,\ \log(1+Q_t/d^\star),\ \operatorname{asinh}(\Delta Q_t/d^\star),\ \operatorname{slog}(f_t/f^\star),\ \log(1+g_t)\big),\\
+\code{ev\_levels}&:\ \big(\log(1+q^b_t/\lot),\ \log(1+q^a_t/\lot),\ \operatorname{slog}F_t,\ \log(1+S_t),\ \operatorname{asinh}D_t,\ \operatorname{asinh}h_t\big),
+\end{align}
+avec $\operatorname{slog}(x)=\operatorname{sign}(x)\log(1+|x|)$, et $d^\star$, $f^\star$ les médianes positives de la fenêtre (repli à 1). La version 0.2.0 sépare \code{ev\_levels} en \code{ev\_ticks} (les trois derniers canaux) et \code{ev\_sizes} (les trois premiers), pour pouvoir retirer les tailles absolues sans retirer les ticks.

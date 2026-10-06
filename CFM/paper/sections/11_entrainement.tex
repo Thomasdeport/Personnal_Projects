@@ -1,0 +1,68 @@
+\section{Entraînement, augmentations, refit}\label{sec:entrainement}
+
+\subsection{Perte}
+Avec un lissage d'étiquettes $\epsilon=0{,}02$ et $\hat p=\softmax(\text{logits})$ :
+\begin{equation}
+\mathcal{L}=-\frac1{|B|}\sum_{i\in B}\sum_{c=1}^{K}\Big((1-\epsilon)\ind{c=y_i}+\frac{\epsilon}{K}\Big)\log\hat p_{i,c}.
+\end{equation}
+
+\subsection{Optimiseur et calendrier}
+AdamW \cite{loshchilov}, avec un pas $\eta_k$, $\beta=(0{,}9;0{,}999)$ et une décroissance de poids $\lambda=0{,}01$ découplée :
+\begin{align}
+m_k&=\beta_1m_{k-1}+(1-\beta_1)g_k,\quad v_k=\beta_2v_{k-1}+(1-\beta_2)g_k^2,\\
+\theta_k&=\theta_{k-1}-\eta_k\Big(\frac{m_k/(1-\beta_1^k)}{\sqrt{v_k/(1-\beta_2^k)}+\varepsilon}+\lambda\theta_{k-1}\Big).
+\end{align}
+Le gradient est écrêté en norme : $g\leftarrow g\cdot\min(1,1/\|g\|_2)$. Le pas suit un warmup linéaire sur $k_w$ pas (une époque), puis un cosinus jusqu'à $5\,\%$ du pas initial :
+\begin{equation}
+\eta_k=\begin{cases}\eta_0\,\dfrac{k+1}{k_w}&k<k_w,\\[6pt]
+\eta_0\Big(0{,}05+0{,}95\cdot\tfrac12\big(1+\cos\pi\,\tfrac{k-k_w}{K_{\text{tot}}-k_w}\big)\Big)&k\ge k_w,\end{cases}
+\qquad \eta_0=10^{-3},\ K_{\text{tot}}=E\cdot\lceil n_{\text{fit}}/512\rceil .
+\end{equation}
+Avec $E=40$ époques et des lots de 512 fenêtres, $K_{\text{tot}}=40\times205=8\,200$ pas. En précision mixte (fp16 sur GPU), la perte est multipliée par un facteur dynamique avant rétropropagation, puis les gradients sont divisés par ce facteur.
+
+\subsection{Sélection de l'époque}
+À chaque époque, on évalue en mode \code{eval} :
+\begin{itemize}
+\item la validation, qui \emph{sélectionne} : on garde l'époque qui maximise la précision, puis à égalité minimise la log-loss ;
+\item le stress, en diagnostic seulement ;
+\item $5\,000$ fenêtres fixes du fit, pour mesurer l'écart d'apprentissage \emph{avec les mêmes poids} que la validation.
+\end{itemize}
+L'arrêt se fait à $E$ époques ou après 8 époques sans amélioration.
+
+\subsection{Augmentations}\label{sec:aug}
+Elles sont appliquées à l'entraînement seulement.
+\begin{itemize}
+\item \textbf{Venue dropout} ($p_v$) : $z_{t,\text{venue}}\leftarrow0$ avec probabilité $p_v$, indépendamment par événement.
+\item \textbf{Dropout de blocs de contexte} ($p_b$) : pour chaque fenêtre et chaque bloc $\mathcal{B}$, $u_{\mathcal{B}}\leftarrow0$ avec probabilité $p_b$.
+\item \textbf{Jitter de niveaux} ($\sigma_\ell$) : $u_j\leftarrow u_j+\sigma_\ell\xi$ pour les colonnes de famille \code{level}, avec $\xi\sim\mathcal{N}(0,1)$ \emph{commun} à la fenêtre.
+\item \textbf{Mise à l'échelle de la profondeur} ($\sigma_d$, v0.2.0) : un facteur $\gamma=e^{\sigma_d\xi}$ par fenêtre multiplie les tailles affichées du carnet. Sur une grandeur standardisée $\tilde x=(\log(1+q/\lot)-\mu)/\sigma$, on applique
+\begin{equation}
+\tilde x\ \leftarrow\ \frac{\log\!\big(1+\gamma\,(e^{\sigma\tilde x+\mu}-1)\big)-\mu}{\sigma},
+\end{equation}
+aux canaux $\log(1+q^b/\lot)$ et $\log(1+q^a/\lot)$ et aux quantiles de profondeur du contexte. Le flux et les parts de lots ne changent pas : les ordres restent en lots.
+\end{itemize}
+\begin{proposition}
+La mise à l'échelle de la profondeur conserve, à chaque événement, le rapport $q^b_t/q^a_t$, et donc l'imbalance $I_t$.
+\end{proposition}
+\begin{proof}
+Le même $\gamma$ multiplie $q^b_t$ et $q^a_t$ : $(\gamma q^b)/(\gamma q^a)=q^b/q^a$, et $I$ est homogène de degré 0. Le test de contrat le vérifie numériquement.
+\end{proof}
+\noindent \textbf{Motivation.} Au run 1, le test a des carnets moins profonds ($\text{shift}_{\mathrm{sd}}\approx-0{,}37$ sur la profondeur médiane), plus d'odd lots ($+0{,}45$) et moins de lots ronds ($-0{,}42$). Une hypothèse unique explique les trois : des \emph{prix plus élevés} dans la période test. À montant égal, on affiche alors moins d'actions, et les quantités inférieures à un lot deviennent plus fréquentes. L'augmentation enseigne au modèle qu'un même titre peut afficher une profondeur différente d'un facteur $\gamma$. C'est une hypothèse : nous n'observons pas le niveau de prix.
+
+\subsection{Refit sur tous les labels}
+Une fois les décisions gelées, on réentraîne sur les $160\,800$ fenêtres (audit compris). Ce refit ne produit aucun score indépendant. Deux budgets sont possibles :
+\begin{align}
+\textbf{epochs}&:\ K_{\text{tot}}=E\,\lceil N/512\rceil,\ \text{arrêt à }e^\star\ \text{époques}\quad(\text{plus d'updates qu'en développement}),\\
+\textbf{steps}&:\ K_{\text{tot}}=E\,\lceil n_{\text{fit}}/512\rceil,\ \text{arrêt à }k^\star\ \text{pas}\quad(\text{même nombre d'updates}).
+\end{align}
+Le run 1 utilise \code{epochs}. Exemple pour \code{signature\_s0} : $e^\star=38$, soit $11\,970$ pas, contre $7\,790$ en développement.
+
+\subsection{Reproductibilité et reprise}
+Chaque époque écrit \code{latest.pt} : poids, état de l'optimiseur, facteur d'échelle AMP, historique, états des générateurs aléatoires. Ce fichier est signé par
+\begin{equation}
+\operatorname{SHA256}\big(\text{config résolue}\ \|\ \text{split}\ \|\ \text{clés des blocs}\ \|\ \text{code}\ \|\ \text{mode}\big).
+\end{equation}
+Une reprise avec une autre configuration, un autre split, d'autres features ou un autre code est refusée.
+
+\subsection{Modèles tabulaires}
+XGBoost (GPU), LightGBM et un MLP à deux couches cachées de 512 partagent la même interface. L'arrêt anticipé se fait sur une tranche interne du fit, et le refit garde un nombre d'itérations fixe, égal au meilleur du développement. Ils servent de référence, de membres d'ensemble potentiels et de modèle de screening.

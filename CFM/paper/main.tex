@@ -1,0 +1,125 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage{graphicx,float,caption,subcaption}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric,backgrounds}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{old}{HTML}{C94F4F}
+\definecolor{new}{HTML}{1F9E89}
+\definecolor{blu}{HTML}{2A6FDB}
+\definecolor{ora}{HTML}{E07B39}
+\definecolor{gry}{HTML}{8C8C8C}
+
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small CFM Signature Lab}\fancyhead[R]{\small\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Définition}[section]
+\newtheorem{exemple}[definition]{Exemple}
+\newtheorem{hypothese}[definition]{Hypothèse}
+\theoremstyle{plain}
+\newtheorem{proposition}[definition]{Proposition}
+\newtheorem{lemme}[definition]{Lemme}
+\newtheorem{corollaire}[definition]{Corollaire}
+\theoremstyle{remark}
+\newtheorem{remarque}[definition]{Remarque}
+
+% Algorithmes sans paquet dédié
+\newfloat{algo}{tbp}{loa}[section]
+\floatname{algo}{Algorithme}
+\newenvironment{algobox}{\small\begin{minipage}{\linewidth}\hrule\smallskip\begin{enumerate}\setlength\itemsep{1pt}}{\end{enumerate}\smallskip\hrule\end{minipage}}
+
+
+% Caractères Unicode courants dans le texte
+\DeclareUnicodeCharacter{2192}{\ensuremath{\to}}
+\DeclareUnicodeCharacter{2295}{\ensuremath{\oplus}}
+\DeclareUnicodeCharacter{2248}{\ensuremath{\approx}}
+\DeclareUnicodeCharacter{2265}{\ensuremath{\ge}}
+\DeclareUnicodeCharacter{2264}{\ensuremath{\le}}
+\DeclareUnicodeCharacter{00D7}{\ensuremath{\times}}
+\DeclareUnicodeCharacter{2212}{\ensuremath{-}}
+\DeclareUnicodeCharacter{03B7}{\ensuremath{\eta}}
+\DeclareUnicodeCharacter{03B2}{\ensuremath{\beta}}
+\DeclareUnicodeCharacter{0394}{\ensuremath{\Delta}}
+\DeclareUnicodeCharacter{03B1}{\ensuremath{\alpha}}
+\DeclareUnicodeCharacter{03BB}{\ensuremath{\lambda}}
+\DeclareUnicodeCharacter{03C3}{\ensuremath{\sigma}}
+\DeclareUnicodeCharacter{2208}{\ensuremath{\in}}
+\DeclareUnicodeCharacter{2260}{\ensuremath{\neq}}
+\DeclareUnicodeCharacter{222A}{\ensuremath{\cup}}
+\DeclareUnicodeCharacter{2211}{\ensuremath{\sum}}
+\DeclareUnicodeCharacter{2026}{\ldots}
+\DeclareUnicodeCharacter{2248}{\ensuremath{\approx}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\1}{\mathbf{1}}
+\newcommand{\ind}[1]{\mathbf{1}\!\left[#1\right]}
+\newcommand{\tick}{\delta}
+\newcommand{\lot}{\lambda}
+\newcommand{\softmax}{\operatorname{softmax}}
+\newcommand{\LN}{\operatorname{LN}}
+\newcommand{\GELU}{\operatorname{GELU}}
+\newcommand{\Med}{\operatorname{med}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\old}[1]{\textcolor{old}{#1}}
+\newcommand{\new}[1]{\textcolor{new}{#1}}
+
+\title{\textbf{Reconnaître un titre à partir de cent événements de carnet d'ordres}\\[4pt]
+\large Unités naturelles, tokens d'événements, SignatureNet\\et correction de prior transductive sous changement de période}
+\author{Projet CFM — Thomas de Portzamparc\\\small rédigé avec l'assistance de Claude (Anthropic)}
+\date{6 octobre 2026 — code \code{CFM/} version 0.2.0}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent On cherche à identifier lequel de $K=24$ titres a produit une fenêtre de $L=100$ événements consécutifs d'un carnet d'ordres agrégé, lorsque le test provient d'une période différente de celle de l'entraînement. Ce document décrit, équations à l'appui, le pipeline \emph{CFM Signature Lab} et le compare au pipeline précédent (Regime Lab V2, CFM Reaction R1/R2, V\_init).
+Trois idées le structurent : (i) réexprimer la donnée dans ses \emph{unités naturelles}, ticks et lots, plutôt qu'en multiples de médianes locales ; (ii) transformer chaque événement en un \emph{n-uplet de tokens discrets}, aux seuils fixés a priori, consommé par un encodeur convolutif et attentionnel (SignatureNet) ; (iii) sélectionner les modèles sur un protocole qui reconnaît que la validation aléatoire est biaisée par la dépendance intra-journalière, puis corriger le \emph{décalage de prior} induit par le changement de période grâce à un équilibrage de Sinkhorn.
+Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ après équilibrage, contre $0{,}5072$ pour le meilleur résultat antérieur. Nous montrons aussi les limites : la validation aléatoire surestime le score public de 28 points, l'apport des différentes briques n'est pas encore séparé causalement, et l'équilibrage est transductif.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+\input{sections/01_intro}
+\input{sections/02_probleme}
+\input{sections/03_avant_apres}
+\input{sections/04_donnees}
+\input{sections/05_unites}
+\input{sections/06_ordres_tokens}
+\input{sections/07_blocs}
+\input{sections/08_protocole}
+\input{sections/09_screening}
+\input{sections/10_signaturenet}
+\input{sections/11_entrainement}
+\input{sections/12_ensemble_sinkhorn}
+\input{sections/13_voisins_proxies}
+\input{sections/14_resultats}
+\input{sections/15_limites}
+\appendix
+\input{sections/A_annexes}
+
+\begin{thebibliography}{9}
+\bibitem{saerens} M.~Saerens, P.~Latinne, C.~Decaestecker. \emph{Adjusting the outputs of a classifier to new a priori probabilities: a simple procedure}. Neural Computation, 14(1), 2002.
+\bibitem{cuturi} M.~Cuturi. \emph{Sinkhorn distances: lightspeed computation of optimal transport}. NeurIPS, 2013.
+\bibitem{sinkhorn} R.~Sinkhorn, P.~Knopp. \emph{Concerning nonnegative matrices and doubly stochastic matrices}. Pacific Journal of Mathematics, 21(2), 1967.
+\bibitem{cks} R.~Cont, A.~Kukanov, S.~Stoikov. \emph{The price impact of order book events}. Journal of Financial Econometrics, 12(1), 2014. arXiv:1011.6402.
+\bibitem{vaswani} A.~Vaswani et al. \emph{Attention is all you need}. NeurIPS, 2017.
+\bibitem{shaw} P.~Shaw, J.~Uszkoreit, A.~Vaswani. \emph{Self-attention with relative position representations}. NAACL, 2018.
+\bibitem{loshchilov} I.~Loshchilov, F.~Hutter. \emph{Decoupled weight decay regularization}. ICLR, 2019.
+\bibitem{zhou} D.~Zhou, O.~Bousquet, T.~N.~Lal, J.~Weston, B.~Schölkopf. \emph{Learning with local and global consistency}. NIPS, 2003.
+\bibitem{lipton} Z.~Lipton, Y.-X.~Wang, A.~Smola. \emph{Detecting and correcting for label shift with black box predictors}. ICML, 2018.
+\end{thebibliography}
+\end{document}
