@@ -1,0 +1,8 @@
+data/
+demo_lab/
+demo_data/
+lab/
+*.npy
+*.npz
+*.pt
+__pycache__/

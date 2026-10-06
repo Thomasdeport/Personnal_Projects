@@ -1,0 +1,2 @@
+{"extends": "base.json", "_doc": "Ablation : aucun niveau absolu (ni ev_levels ni bloc levels).",
+ "neural": {"event_blocks": ["ev_relative"], "context_blocks": ["ticks", "position", "orders", "cat_freq"]}}

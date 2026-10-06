@@ -1,0 +1,3 @@
+{"extends": "base.json", "lab_dir": "demo_lab", "device": "cpu",
+ "screen": {"fit_frac": 1.0},
+ "neural": {"d_model": 32, "heads": 2, "train": {"epochs": 3, "patience": 3, "batch_size": 64, "amp": false}}}

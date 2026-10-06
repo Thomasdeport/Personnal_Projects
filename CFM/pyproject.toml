@@ -1,0 +1,8 @@
+[project]
+name = "cfm-signature-lab"
+version = "0.1.0"
+requires-python = ">=3.10"
+description = "Identification de titres CFM : unités naturelles, tokens d'événements, screening de features."
+
+[tool.setuptools]
+packages = ["cfm", "cfm.features", "cfm.neural"]

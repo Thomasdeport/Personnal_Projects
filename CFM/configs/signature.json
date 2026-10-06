@@ -1,0 +1,1 @@
+{"extends": "base.json", "_doc": "Architecture proposée : tokens + conv + attention avec biais même-ordre + contexte tabulaire."}

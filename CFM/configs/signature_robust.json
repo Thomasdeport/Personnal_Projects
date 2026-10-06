@@ -1,0 +1,2 @@
+{"extends": "base.json", "_doc": "Une seule différence vs signature : augmentations contre le drift (venue, niveaux, blocs de contexte).",
+ "neural": {"aug": {"venue_dropout": 0.1, "ctx_block_dropout": 0.1, "level_jitter": 0.25}}}

@@ -1,0 +1,2 @@
+{"extends": "base.json", "_doc": "Contrôle proche de R2 : même entrée, encodeur BiGRU seul, fusion linéaire.",
+ "neural": {"encoder": "gru", "fusion": "linear"}}

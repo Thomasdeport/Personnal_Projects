@@ -1,0 +1,2 @@
+{"extends": "base.json", "_doc": "Ablation : attention sans biais même-ordre (β figé à 0).",
+ "neural": {"same_order_bias": false}}
