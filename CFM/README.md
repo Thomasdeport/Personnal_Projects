@@ -86,7 +86,7 @@ cont   (B,100,11) ─ linéaire ─────┼─ + position ─ LN ─ 2× 
 ctx    (B,~80)    ─ MLP ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┴─ fusion ─ 24
 ```
 
-- **Convolutions dilatées** : motifs locaux (rafales d'annulations, ping-pong bid/ask) sur un horizon d'environ 30 événements.
+- **Convolutions dilatées** : motifs locaux (rafales d'annulations, ping-pong bid/ask) sur un champ de 13 événements consécutifs (noyau 5, dilatations 1 et 2).
 - **Attention à biais « même ordre »** : chaque tête apprend un scalaire β_h ajouté aux scores entre événements du même ordre. Avec β = 0, on retrouve une attention standard. L'apport du biais se teste avec `configs/signature_no_bias.json`.
 - **Contexte** : blocs tabulaires standardisés sur le fit seulement.
 - **Encodeurs disponibles** (`neural.encoder`) : `conv`, `gru`, `conv_gru`, `conv_rel`, `rel`. Le contrôle `control_gru.json` est proche de R2 : BiGRU et fusion linéaire, mêmes entrées.
@@ -106,3 +106,4 @@ Voir `EXPERIMENTS.md` pour ajouter une feature et pour le plan d'expériences.
 - **macOS : segfault ou blocage** quand XGBoost/LightGBM et torch tournent dans le même processus (deux runtimes OpenMP, reproduit : code 139). Le notebook lance donc toujours les modèles d'arbres dans un sous-processus (`cli(...)`). En script, garder ces familles dans des processus séparés.
 - **`device="cuda"` sans GPU** : erreur explicite, jamais de repli silencieux. Passer `--set device=cpu` volontairement.
 - **« Split already exists with another config »** : le split est figé par `lab_dir`. Changer de `lab_dir` pour en tester un autre.
+# CFM2026
