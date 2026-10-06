@@ -102,11 +102,15 @@ class SignatureNet(nn.Module):
             x, _ = self.gru(x)
         return self.pool_proj(torch.cat([self.pool(x), x.mean(1), x.amax(1)], -1))
 
-    def forward(self, tokens, cont, ctx, oid):
+    def features(self, tokens, cont, ctx, oid):
+        """Fused window representation fed to the head (sequence ⊕ context)."""
         z = self.encode(tokens, cont, oid)
         if self.ctx is not None:
             z = torch.cat([z, self.ctx(ctx)], -1)
-        return self.head(z)
+        return z
+
+    def forward(self, tokens, cont, ctx, oid):
+        return self.head(self.features(tokens, cont, ctx, oid))
 
 
 def n_params(model):

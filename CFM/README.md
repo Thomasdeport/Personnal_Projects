@@ -18,6 +18,8 @@ Rien dans ce repo n'a été exécuté sur les vraies données. Les tests et la d
 2. Ouvrir **`CFM_Signature_Lab.ipynb`** (à la racine) et exécuter toutes les cellules : tests logiciels → préparation → screening → XGBoost/LightGBM/MLP → 5 variantes neuronales → seeds des finalistes → blend → soumission. Les CSV sont détectés par nom et par colonnes.
 3. Récupérer `lab/submission_finalists_mean.csv` et `lab_results.zip` : ledger, configs, probabilités, figures.
 
+**Round 2 :** `CFM_Round2.ipynb` (même mise en place, même `CODE_DATASET`) compare 6 configurations sans se fier à la validation aléatoire, puis teste le lissage par voisins. Version DEMO exécutée : `notebooks/CFM_Round2_DEMO_executed.ipynb`.
+
 `notebooks/CFM_Signature_Lab_DEMO_executed.ipynb` montre le même notebook déjà exécuté sur données synthétiques (`DEMO=True`, CPU, ~2,5 min), pour voir les sorties sans rien lancer.
 
 Coût mesuré en local (CPU 4 cœurs, données répliquées) : environ **3 min** pour calculer tous les blocs de features sur 242 400 fenêtres. La lecture du CSV, les modèles XGBoost et les réseaux n'ont **pas** été mesurés sur GPU Kaggle.

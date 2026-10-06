@@ -10,7 +10,10 @@ def assemble(lab_dir, ncfg, split, lot):
     toks = [np.asarray(compute(t, lab_dir, split, lot)[0]) for t in ncfg['tokens']]
     tokens = np.stack(toks, -1) if toks else np.zeros((len(raw['ids']), 100, 0), np.int16)
     cards = [BLOCKS[t].cardinality for t in ncfg['tokens']]
-    evs = [np.asarray(compute(b, lab_dir, split, lot)[0]) for b in ncfg['event_blocks']]
+    evs, cont_names = [], []
+    for b in ncfg['event_blocks']:
+        x, nm = compute(b, lab_dir, split, lot)
+        evs.append(np.asarray(x)); cont_names += nm
     cont = np.concatenate(evs, -1) if evs else np.zeros((len(raw['ids']), 100, 0), np.float32)
     if ncfg['context_blocks']:
         ctx, names, fams = window_matrix(ncfg['context_blocks'], lab_dir, split, lot)
@@ -20,7 +23,7 @@ def assemble(lab_dir, ncfg, split, lot):
     block_of = np.array([n.split(':')[0] for n in names])
     return {'tokens': tokens, 'cards': cards, 'cont': cont, 'ctx': ctx, 'oid': np.asarray(raw['oid']),
             'ids': np.asarray(raw['ids']), 'y': np.asarray(raw['y']).astype(np.int64) if 'y' in raw else None,
-            'ctx_names': names, 'ctx_level_mask': level_mask, 'ctx_block': block_of}
+            'ctx_names': names, 'cont_names': cont_names, 'ctx_level_mask': level_mask, 'ctx_block': block_of}
 
 
 class Scaler:

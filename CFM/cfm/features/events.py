@@ -101,3 +101,17 @@ def ev_levels(r):
             'log_aq_lots': np.log1p(np.where(r.size_ok, r.aq, np.nan) / r.lot),
             'slog_flux_lots': slog(r.flux_lots), 'log_spread_t': np.log1p(r.spread_t),
             'own_dist_t': np.arcsinh(r.own_dist), 'dmid_h': np.arcsinh(r.dmid_h)}
+
+
+@block('ev_ticks', kind='event', family='event')
+def ev_ticks(r):
+    """Canaux de prix en ticks (sans tailles) : spread, distance au meilleur prix, Δmid."""
+    return {'log_spread_t': np.log1p(r.spread_t), 'own_dist_t': np.arcsinh(r.own_dist), 'dmid_h': np.arcsinh(r.dmid_h)}
+
+
+@block('ev_sizes', kind='event', family='event_level')
+def ev_sizes(r):
+    """Tailles en lots (niveaux sensibles au régime) : carnet bid/ask et flux."""
+    return {'log_bq_lots': np.log1p(np.where(r.size_ok, r.bq, np.nan) / r.lot),
+            'log_aq_lots': np.log1p(np.where(r.size_ok, r.aq, np.nan) / r.lot),
+            'slog_flux_lots': slog(r.flux_lots)}

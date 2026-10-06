@@ -1,0 +1,3 @@
+{"extends": "signature_no_bias.json",
+ "_doc": "Une différence vs signature_no_bias : profondeur du carnet multipliée par exp(N(0, 0.3)) par fenêtre à l'entraînement (canaux log_bq/log_aq et quantiles de profondeur du contexte). Teste l'hypothèse 'prix plus élevés → moins d'actions affichées'.",
+ "neural": {"aug": {"depth_scale": 0.3}}}

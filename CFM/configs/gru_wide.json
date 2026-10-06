@@ -1,0 +1,3 @@
+{"extends": "signature_no_bias.json",
+ "_doc": "Contrôle à capacité égale : BiGRU (88 par direction) + même fusion MLP, d_model 176 → ~332k paramètres contre 343k pour signature_no_bias.",
+ "neural": {"encoder": "gru", "d_model": 176, "heads": 4}}

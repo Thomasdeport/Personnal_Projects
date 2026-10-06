@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — 2026-10-06
+Round 2, à partir des résultats du round 1 (LB 0,57 brut, 0,5958 équilibré ; validation aléatoire 0,85 → non prédictive).
+- `CFM_Round2.ipynb` : 6 configs × 2 seeds classées par **précision stress équilibrée** (règle écrite avant les résultats), indicateurs sans labels sur le test, finalistes + refit, lissage par voisins, deux soumissions au plus.
+- Nouvelles configs, une différence chacune vs `signature_no_bias` : `sig2_nolevels` (sans tailles absolues), `sig2_depthaug` (profondeur × exp(N(0, 0,3))), `gru_wide` (BiGRU à capacité égale, ~332k paramètres).
+- Augmentation `depth_scale` : même facteur sur log_bq/log_aq et sur les quantiles de profondeur du contexte, flux et lots inchangés.
+- `SignatureNet.features` et `neural.train.embed` : représentations du modèle dev (valid/stress) ou du refit (test seulement, refus sur les partitions étiquetées).
+- `cfm/transductive.py` : kNN exact (GPU si disponible), lissage par propagation, pureté des voisins, grille, application au test avec k × 4.
+- `cfm/proxies.py` : confiance, entropie, équilibre et accord entre seeds sur le test.
+- Blocs `ev_ticks` et `ev_sizes` (séparation prix en ticks / tailles en lots).
+- Test local sur les probabilités du round 1 : le lissage dans l'espace des probabilités n'apporte rien après équilibrage (0,8281 → 0,8281 sur valid ∪ stress). Le round 2 teste donc des représentations de régime (fenêtre, embeddings).
+- 4 tests de contrat ajoutés (15 au total).
+
 ## 0.1.2 — 2026-10-06
 - `scripts/kaggle_upload.py` publie le code comme Dataset Kaggle privé versionné, via kagglehub, avec le commit git dans la note de version.
 - Notebook : `CODE_DATASET` télécharge la dernière version du code ; il affiche la version utilisée.

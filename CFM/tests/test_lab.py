@@ -193,6 +193,74 @@ def test_neural_runs_resumes_and_refuses_other_config():
         fit(cfg['lab_dir'], c3, f'nn_{enc}')
 
 
+def test_neural_depth_aug_and_embeddings():
+    cfg, _ = lab()
+    from cfm.neural.train import embed, fit, refit
+    c = config.load(ROOT / 'configs' / 'sig2_depthaug.json', [f'lab_dir={cfg["lab_dir"]}'])
+    c['device'] = 'cpu'; c['neural'].update({'d_model': 32, 'heads': 2})
+    c['neural']['train'].update({'epochs': 1, 'batch_size': 64, 'amp': False})
+    fit(cfg['lab_dir'], c, 'aug')
+    refit(cfg['lab_dir'], c, 'aug', 'epochs')
+    z = embed(cfg['lab_dir'], c, 'aug', 'dev', ('valid', 'stress'))
+    assert z['valid'].shape[1] == 32 + c['neural']['context_dim']
+    zt = embed(cfg['lab_dir'], c, 'aug', 'refit', ('test',))
+    assert len(zt['test']) == len(io.load(cfg['lab_dir'], 'test')['ids'])
+    try:
+        embed(cfg['lab_dir'], c, 'aug', 'refit', ('valid',))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('refit weights must not embed labelled partitions')
+    c2 = config.load(ROOT / 'configs' / 'sig2_nolevels.json', [f'lab_dir={cfg["lab_dir"]}'])
+    c2['device'] = 'cpu'; c2['neural'].update({'d_model': 32, 'heads': 2})
+    c2['neural']['train'].update({'epochs': 1, 'batch_size': 64, 'amp': False})
+    fit(cfg['lab_dir'], c2, 'nolev')
+
+
+def test_depth_scale_moves_only_depth_channels():
+    import torch
+    from cfm.neural.train import Augment
+    from cfm.neural.data import Scaler
+    rng = np.random.default_rng(0)
+    cont = np.log1p(rng.gamma(2, 3, (8, 100, 3))).astype(np.float32)
+    ctx = rng.normal(size=(8, 2)).astype(np.float32)
+    sc = Scaler(cont, ctx, np.arange(8))
+    data = {'cont_names': ['log_bq_lots', 'imbalance', 'log_aq_lots'], 'ctx_names': ['levels:log_depth_q50', 'ticks:spread_1'],
+            'ctx_block': np.array(['levels', 'ticks']), 'ctx_level_mask': np.array([True, False])}
+    aug = Augment({'aug': {'depth_scale': .5}, 'tokens': []}, data, torch.device('cpu'), sc)
+    c0, x0 = torch.tensor(sc.cont(cont)), torch.tensor(sc.ctx(ctx))
+    _, c1, x1, _ = aug(torch.zeros(8, 100, 0, dtype=torch.long), c0, x0, None)
+    assert torch.equal(c1[..., 1], c0[..., 1]) and torch.equal(x1[:, 1], x0[:, 1])
+    assert not torch.allclose(c1[..., 0], c0[..., 0]) and not torch.allclose(x1[:, 0], x0[:, 0])
+    # same factor for bid and ask of a window: the raw ratio of sizes is preserved
+    raw = lambda c, j: torch.expm1(c[..., j] * float(sc.cs[j]) + float(sc.cm[j]))
+    r0 = raw(c0, 0)[:, :5] / raw(c0, 2)[:, :5]; r1 = raw(c1, 0)[:, :5] / raw(c1, 2)[:, :5]
+    assert torch.allclose(r0, r1, rtol=1e-3)
+
+
+def test_knn_smoothing_fixes_isolated_errors():
+    from cfm import transductive as T
+    rng = np.random.default_rng(0)
+    y = np.repeat(np.arange(24), 20)                       # 20 windows per "stock-day"
+    Z = np.eye(24)[y] * 5 + rng.normal(0, .3, (480, 24))   # same group → close
+    P = np.full((480, 24), .01); P[np.arange(480), y] = .5
+    wrong = rng.random(480) < .3                            # 30 % confidently wrong
+    P[wrong] = .01; P[wrong, (y[wrong] + 1) % 24] = .5
+    P /= P.sum(1, keepdims=True)
+    nb = T.knn(Z, 10, device='cpu')
+    assert not (nb == np.arange(480)[:, None]).any()       # self excluded
+    assert (T.smooth(P, nb, .8, 5).argmax(1) == y).mean() > (P.argmax(1) == y).mean() + .15
+    assert T.purity(Z, y)['purity@10'] > .95
+
+
+def test_proxies_are_label_free_and_sane():
+    from cfm import proxies
+    p = np.full((240, 24), 1 / 24); p[np.arange(240), np.arange(240) % 24] = .9
+    p /= p.sum(1, keepdims=True)
+    i = proxies.indicators(p)
+    assert abs(i['balance_kl']) < 1e-9 and i['max_min_ratio'] == 1
+
+
 def test_sinkhorn_balances_columns():
     p = np.random.default_rng(0).dirichlet(np.ones(24) * .3, 480)
     q = blend.sinkhorn_balance(p)

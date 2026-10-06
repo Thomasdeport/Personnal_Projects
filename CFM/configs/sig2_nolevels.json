@@ -1,0 +1,4 @@
+{"extends": "signature_no_bias.json",
+ "_doc": "Une différence vs signature_no_bias : plus aucune taille absolue (ni ev_sizes, ni bloc levels). Ticks, lots (parts) et tokens conservés.",
+ "neural": {"event_blocks": ["ev_relative", "ev_ticks"],
+            "context_blocks": ["ticks", "lots", "position", "orders", "cat_freq"]}}

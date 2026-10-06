@@ -67,9 +67,18 @@ def signature(lab_dir, cfg, idx, mode):
 
 
 class Augment:
-    """Train-time only. venue_dropout: venue token → unknown. ctx_block_dropout: zero a whole context
-    block for a sample. level_jitter: Gaussian noise (in standard deviations) on level context columns."""
-    def __init__(self, ncfg, data, device):
+    """Train-time only.
+    venue_dropout     : venue token → unknown for a share of events.
+    ctx_block_dropout : zero a whole context block for a sample.
+    level_jitter      : Gaussian noise (in standard deviations) on level context columns.
+    depth_scale σ     : per window, book sizes × exp(N(0, σ)) — applied consistently to the event channels
+                        log_bq_lots / log_aq_lots and to the context depth quantiles (raw space, then
+                        re-standardised). Flux and lot-shape features are left untouched (orders stay in lots)."""
+    DEPTH_CONT = ('log_bq_lots', 'log_aq_lots')
+    DEPTH_CTX = ('levels:log_depth_q10', 'levels:log_depth_q50', 'levels:log_depth_q90',
+                 'levels:log_bq_q50', 'levels:log_aq_q50')
+
+    def __init__(self, ncfg, data, device, scaler=None):
         a = ncfg['aug']
         self.venue_p = a.get('venue_dropout', 0.)
         self.venue_j = ncfg['tokens'].index('tok_venue') if 'tok_venue' in ncfg['tokens'] else None
@@ -79,6 +88,23 @@ class Augment:
                                         np.zeros((0, 0)), dtype=torch.float32, device=device)
         self.jitter = a.get('level_jitter', 0.)
         self.level = torch.tensor(data['ctx_level_mask'], dtype=torch.float32, device=device)
+        self.depth = a.get('depth_scale', 0.)
+        if self.depth:
+            if scaler is None:
+                raise ValueError('depth_scale needs the scaler')
+            ci = [i for i, n in enumerate(data['cont_names']) if n in self.DEPTH_CONT]
+            xi = [i for i, n in enumerate(data['ctx_names']) if n in self.DEPTH_CTX]
+            if not ci and not xi:
+                raise ValueError('depth_scale: no depth channel among the inputs')
+            t = lambda v: torch.tensor(np.asarray(v, dtype=np.float32), device=device)
+            self.ci, self.cm, self.cs = ci, t(scaler.cm[ci]), t(scaler.cs[ci])
+            self.xi, self.xm, self.xs = xi, t(scaler.xm[xi]), t(scaler.xs[xi])
+
+    @staticmethod
+    def _rescale(z, mean, std, log_s):
+        raw = z * std + mean                          # back to log1p(size in lots)
+        out = torch.log1p(torch.expm1(raw.clamp(min=0)) * torch.exp(log_s))
+        return (out - mean) / std
 
     def __call__(self, tokens, cont, ctx, oid):
         if self.venue_p and self.venue_j is not None:
@@ -89,6 +115,14 @@ class Augment:
             ctx = ctx * (1 - (1 - keep) @ self.block_masks).clamp(0, 1)
         if self.jitter and self.level.sum() > 0:
             ctx = ctx + self.jitter * torch.randn(ctx.shape[0], 1, device=ctx.device) * self.level
+        if self.depth:
+            log_s = self.depth * torch.randn(cont.shape[0], device=cont.device)
+            if self.ci:
+                cont = cont.clone()
+                cont[..., self.ci] = self._rescale(cont[..., self.ci], self.cm, self.cs, log_s[:, None, None])
+            if self.xi:
+                ctx = ctx.clone()
+                ctx[:, self.xi] = self._rescale(ctx[:, self.xi], self.xm, self.xs, log_s[:, None])
         return tokens, cont, ctx, oid
 
 
@@ -118,7 +152,7 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
     amp = t['amp'] and device.type == 'cuda'
     gs = (torch.amp.GradScaler('cuda', enabled=amp) if hasattr(torch.amp, 'GradScaler')
           else torch.cuda.amp.GradScaler(enabled=amp))
-    aug = Augment(n, data, device)
+    aug = Augment(n, data, device, scaler)
     spe = math.ceil(len(train_idx) / t['batch_size'])
     total_epochs = total_epochs or t['epochs']
     total, warm = total_epochs * spe, int(t['warmup_epochs'] * spe)
@@ -249,3 +283,47 @@ def refit(lab_dir, cfg, name, budget='epochs'):
     (run_dir / 'result.json').write_text(json.dumps(res, indent=2))
     ledger(lab_dir, {'name': name, 'kind': 'refit', 'refit_budget': budget, 'refit_steps': st['step']})
     return run_dir / 'test_refit.npz'
+
+
+@torch.no_grad()
+def embed(lab_dir, cfg, name, weights='dev', parts=('valid', 'stress'), bs=1024):
+    """Save fused representations to <run>/emb_<weights>_<part>.npz.
+
+    weights='dev'  : best development checkpoint, scaler fitted on fit → use on valid/stress (never trained on them).
+    weights='refit': refit checkpoint, scaler fitted on all labels → use on test only."""
+    lab_dir = Path(lab_dir); run_dir = lab_dir / 'runs' / name
+    n = cfg['neural']
+    device = device_for(cfg['device'])
+    sp = splitlib.load(lab_dir)
+    data = assemble(lab_dir, n, 'train', cfg['lot'])
+    idx = sp['fit'] if weights == 'dev' else np.arange(len(data['y']))
+    scaler = Scaler(data['cont'], data['ctx'], idx)
+    model = SignatureNet(data['cards'], data['cont'].shape[-1], data['ctx'].shape[1], n, int(data['y'].max()) + 1).to(device)
+    if weights == 'dev':
+        state = torch.load(run_dir / 'best_weights.pt', map_location=device)
+    elif weights == 'refit':
+        state = torch.load(run_dir / 'refit_latest.pt', map_location=device, weights_only=False)['weights']
+    else:
+        raise ValueError(weights)
+    model.load_state_dict(state); model.eval()
+    amp = n['train']['amp'] and device.type == 'cuda'
+    out = {}
+    for part in parts:
+        if part == 'test':
+            if weights != 'refit':
+                print('note: test embeddings from the dev model')
+            src = assemble(lab_dir, n, 'test', cfg['lot']); rows = np.arange(len(src['ids']))
+        else:
+            if weights == 'refit':
+                raise ValueError('refit weights have seen valid/stress labels: embed them with weights="dev"')
+            src, rows = data, sp[part]
+        b = Batches(src, scaler, device, False)
+        z = []
+        for i in range(0, len(rows), bs):
+            x, _ = b.get(rows[i:i + bs])
+            with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
+                z.append(model.features(*x).float().cpu().numpy())
+        z = np.concatenate(z)
+        np.savez(run_dir / f'emb_{weights}_{part}.npz', obs_ids=src['ids'][rows], z=z.astype(np.float16))
+        out[part] = z
+    return out
