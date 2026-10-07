@@ -1,0 +1,4 @@
+{"extends": "sig2_depthaug.json",
+ "_doc": "V3 — ancre : sig2_depthaug (meilleur du round 2, LB 0.59999 en blend). Nouveau protocole : valid par grappes de régime (approxime des jours non vus).",
+ "split": {"seed": 42, "audit": 0.10, "stress": 0.10, "valid": 0.15, "stress_tail": "auto",
+           "valid_mode": "cluster", "clusters_per_class": 40, "regime_blocks": ["levels", "lots", "ticks", "cat_freq"]}}

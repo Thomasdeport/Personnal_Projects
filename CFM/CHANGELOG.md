@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-10-07 (V3)
+Après le round 2 (LB 0,59999 : blend `sig2_depthaug` + `signature_no_bias`, équilibré).
+- **Validation par grappes de régime** (`split.valid_mode='cluster'`) : k-means par titre sur profondeur, lots, ticks et venues ; des grappes entières vont en valid, pour approcher des jours non vus. Audit et stress sont inchangés (mêmes tirages).
+- **EMA des poids** (`neural.train.ema`) : évaluation, sélection et refit sur les poids moyennés ; reprise exacte ; `refit_weights.pt` = poids utilisés pour le test.
+- **Alignement de profondeur au test** (`predict_shifted`, `DepthShift`) : prédire avec les tailles × γ. γ est estimé sans labels à partir de l'écart de log-profondeur médiane ; le multiplicateur est choisi sur le stress.
+- **Vote entre voisins** : nouvelle représentation `combo` (fenêtre ⊕ embeddings) ; pureté et grille écrites en CSV.
+- Configs V3, une différence chacune vs `v3_base` (= `sig2_depthaug`) : `v3_nodepth`, `v3_depth05` (σ=0,5), `v3_ema`, `v3_long` (60 époques), `v3_big` (d=128, 3 convolutions, 681k paramètres).
+- `CFM_V3.ipynb` : banc 6×2, finalistes 2×3 seeds, refit, alignement, voisins, soumissions A/B ; tous les tableaux de décision sont sauvegardés (`v3_*.csv`, `v3_decisions.json`).
+- 17 tests de contrat (EMA + reprise, alignement γ=1 identique aux prédictions sauvegardées, refus des poids du refit sur partitions étiquetées, split par grappes).
+
 ## 0.2.0 — 2026-10-06
 Round 2, à partir des résultats du round 1 (LB 0,57 brut, 0,5958 équilibré ; validation aléatoire 0,85 → non prédictive).
 - `CFM_Round2.ipynb` : 6 configs × 2 seeds classées par **précision stress équilibrée** (règle écrite avant les résultats), indicateurs sans labels sur le test, finalistes + refit, lissage par voisins, deux soumissions au plus.

@@ -1,0 +1,2 @@
+{"extends": "v3_base.json", "_doc": "Une différence vs v3_base : moyenne exponentielle des poids (décroissance 0.999), utilisée pour l'évaluation, la sélection et le refit.",
+ "neural": {"train": {"ema": 0.999}}}

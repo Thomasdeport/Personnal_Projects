@@ -261,6 +261,46 @@ def test_proxies_are_label_free_and_sane():
     assert abs(i['balance_kl']) < 1e-9 and i['max_min_ratio'] == 1
 
 
+def test_neural_v3_ema_and_depth_alignment():
+    cfg, _ = lab()
+    from cfm.neural.train import fit, predict_shifted, refit
+    c = config.load(ROOT / 'configs' / 'v3_ema.json', [f'lab_dir={cfg["lab_dir"]}'])
+    c['split'] = cfg['split']                       # same lab, same split
+    c['device'] = 'cpu'; c['neural'].update({'d_model': 32, 'heads': 2})
+    c['neural']['train'].update({'epochs': 2, 'batch_size': 64, 'amp': False})
+    r1 = fit(cfg['lab_dir'], c, 'ema'); r2 = fit(cfg['lab_dir'], c, 'ema')
+    assert r1['valid_acc'] == r2['valid_acc']                   # resume restores the EMA too
+    refit(cfg['lab_dir'], c, 'ema', 'epochs')
+    assert (Path(cfg['lab_dir']) / 'runs' / 'ema' / 'refit_weights.pt').exists()
+    P = predict_shifted(cfg['lab_dir'], c, 'ema', 'dev', 'stress', [0., .3])
+    z = np.load(Path(cfg['lab_dir']) / 'runs' / 'ema' / 'stress.npz')
+    assert np.allclose(P[0], z['p'], atol=1e-5)                  # γ = 1 reproduces the saved predictions
+    assert not np.allclose(P[0], P[1])                           # γ ≠ 1 changes them
+    Pt = predict_shifted(cfg['lab_dir'], c, 'ema', 'refit', 'test', [0.])
+    assert np.allclose(Pt.sum(-1), 1, atol=1e-4)
+    try:
+        predict_shifted(cfg['lab_dir'], c, 'ema', 'refit', 'valid', [0.])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('refit weights must not predict labelled partitions')
+
+
+def test_cluster_validation_split():
+    cfg, _ = lab()
+    other = Path(tempfile.mkdtemp())
+    for f in ['raw', 'features']:
+        shutil.copytree(Path(cfg['lab_dir']) / f, other / f)
+    c = json.loads(json.dumps(cfg)); c['split'].update({'valid_mode': 'cluster', 'clusters_per_class': 3})
+    sp = split.make(other, c)
+    ref = split.load(cfg['lab_dir'])
+    assert np.array_equal(sp['audit'], ref['audit']) and np.array_equal(sp['stress'], ref['stress'])
+    allidx = np.concatenate(list(sp.values()))
+    assert len(allidx) == len(np.unique(allidx)) == len(io.load(other, 'train')['y'])
+    y = np.asarray(io.load(other, 'train')['y'])
+    assert len(np.unique(y[sp['valid']])) == 24 and len(sp['valid']) >= .1 * len(y)
+
+
 def test_sinkhorn_balances_columns():
     p = np.random.default_rng(0).dirichlet(np.ones(24) * .3, 480)
     q = blend.sinkhorn_balance(p)

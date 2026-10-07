@@ -66,6 +66,39 @@ def signature(lab_dir, cfg, idx, mode):
                    np.asarray(idx).sum()])
 
 
+class DepthShift:
+    """Multiply book sizes by exp(log_s) per window, in raw space, on standardised inputs.
+    Touches only log_bq_lots / log_aq_lots (events) and the context depth quantiles."""
+    DEPTH_CONT = ('log_bq_lots', 'log_aq_lots')
+    DEPTH_CTX = ('levels:log_depth_q10', 'levels:log_depth_q50', 'levels:log_depth_q90',
+                 'levels:log_bq_q50', 'levels:log_aq_q50')
+
+    def __init__(self, data, scaler, device):
+        ci = [i for i, n in enumerate(data['cont_names']) if n in self.DEPTH_CONT]
+        xi = [i for i, n in enumerate(data['ctx_names']) if n in self.DEPTH_CTX]
+        if not ci and not xi:
+            raise ValueError('depth shift: no depth channel among the inputs')
+        t = lambda v: torch.tensor(np.asarray(v, dtype=np.float32), device=device)
+        self.ci, self.cm, self.cs = ci, t(scaler.cm[ci]), t(scaler.cs[ci])
+        self.xi, self.xm, self.xs = xi, t(scaler.xm[xi]), t(scaler.xs[xi])
+
+    @staticmethod
+    def _rescale(z, mean, std, log_s):
+        raw = z * std + mean                          # back to log1p(size in lots)
+        out = torch.log1p(torch.expm1(raw.clamp(min=0)) * torch.exp(log_s))
+        return (out - mean) / std
+
+    def __call__(self, cont, ctx, log_s):
+        """log_s: tensor (B,) of log factors."""
+        if self.ci:
+            cont = cont.clone()
+            cont[..., self.ci] = self._rescale(cont[..., self.ci], self.cm, self.cs, log_s[:, None, None])
+        if self.xi:
+            ctx = ctx.clone()
+            ctx[:, self.xi] = self._rescale(ctx[:, self.xi], self.xm, self.xs, log_s[:, None])
+        return cont, ctx
+
+
 class Augment:
     """Train-time only.
     venue_dropout     : venue token → unknown for a share of events.
@@ -92,19 +125,10 @@ class Augment:
         if self.depth:
             if scaler is None:
                 raise ValueError('depth_scale needs the scaler')
-            ci = [i for i, n in enumerate(data['cont_names']) if n in self.DEPTH_CONT]
-            xi = [i for i, n in enumerate(data['ctx_names']) if n in self.DEPTH_CTX]
-            if not ci and not xi:
-                raise ValueError('depth_scale: no depth channel among the inputs')
-            t = lambda v: torch.tensor(np.asarray(v, dtype=np.float32), device=device)
-            self.ci, self.cm, self.cs = ci, t(scaler.cm[ci]), t(scaler.cs[ci])
-            self.xi, self.xm, self.xs = xi, t(scaler.xm[xi]), t(scaler.xs[xi])
+            self.shift = DepthShift(data, scaler, device)
+            self.ci, self.xi = self.shift.ci, self.shift.xi
 
-    @staticmethod
-    def _rescale(z, mean, std, log_s):
-        raw = z * std + mean                          # back to log1p(size in lots)
-        out = torch.log1p(torch.expm1(raw.clamp(min=0)) * torch.exp(log_s))
-        return (out - mean) / std
+    _rescale = staticmethod(DepthShift._rescale)
 
     def __call__(self, tokens, cont, ctx, oid):
         if self.venue_p and self.venue_j is not None:
@@ -116,22 +140,20 @@ class Augment:
         if self.jitter and self.level.sum() > 0:
             ctx = ctx + self.jitter * torch.randn(ctx.shape[0], 1, device=ctx.device) * self.level
         if self.depth:
-            log_s = self.depth * torch.randn(cont.shape[0], device=cont.device)
-            if self.ci:
-                cont = cont.clone()
-                cont[..., self.ci] = self._rescale(cont[..., self.ci], self.cm, self.cs, log_s[:, None, None])
-            if self.xi:
-                ctx = ctx.clone()
-                ctx[:, self.xi] = self._rescale(ctx[:, self.xi], self.xm, self.xs, log_s[:, None])
+            cont, ctx = self.shift(cont, ctx, self.depth * torch.randn(cont.shape[0], device=cont.device))
         return tokens, cont, ctx, oid
 
 
 @torch.no_grad()
-def predict(model, batches, idx, bs=1024, amp=False):
+def predict(model, batches, idx, bs=1024, amp=False, shift=None, log_gamma=0.):
+    """shift: a DepthShift; log_gamma: fixed log factor applied to every window (test-time alignment)."""
     model.eval()
     out = []
     for i in range(0, len(idx), bs):
         x, _ = batches.get(idx[i:i + bs])
+        if shift is not None and log_gamma:
+            c, z = shift(x[1], x[2], torch.full((x[1].shape[0],), float(log_gamma), device=x[1].device))
+            x = [x[0], c, z, x[3]]
         with torch.autocast(batches.device.type, dtype=torch.float16, enabled=amp):
             out.append(model(*x).float().softmax(-1).cpu().numpy())
     return np.concatenate(out) if out else np.zeros((0, model.head.out_features if hasattr(model.head, 'out_features') else 24))
@@ -153,6 +175,12 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
     gs = (torch.amp.GradScaler('cuda', enabled=amp) if hasattr(torch.amp, 'GradScaler')
           else torch.cuda.amp.GradScaler(enabled=amp))
     aug = Augment(n, data, device, scaler)
+    ema_decay = t.get('ema', 0.)
+    ema = copy.deepcopy(model).eval() if ema_decay else None
+    if ema is not None:
+        for p_ in ema.parameters():
+            p_.requires_grad_(False)
+    evaluated = ema if ema is not None else model
     spe = math.ceil(len(train_idx) / t['batch_size'])
     total_epochs = total_epochs or t['epochs']
     total, warm = total_epochs * spe, int(t['warmup_epochs'] * spe)
@@ -164,6 +192,8 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
         if s['signature'] != sig:
             raise ValueError(f'{latest} was produced by another config/split/features/code: use a new run name')
         model.load_state_dict(s['weights']); opt.load_state_dict(s['opt']); gs.load_state_dict(s['amp'])
+        if ema is not None:
+            ema.load_state_dict(s['ema'])
         set_rng(s['rng']); st = s['state']
         print(f'resume from epoch {st["epoch"]}', flush=True)
     y = data['y']
@@ -189,19 +219,25 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
             gs.scale(loss).backward(); gs.unscale_(opt)
             nn.utils.clip_grad_norm_(model.parameters(), 1.)
             gs.step(opt); gs.update()
+            if ema is not None:
+                with torch.no_grad():
+                    for pe, pm in zip(ema.parameters(), model.parameters()):
+                        pe.mul_(ema_decay).add_(pm.detach(), alpha=1 - ema_decay)
+                    for be, bm in zip(ema.buffers(), model.buffers()):
+                        be.copy_(bm)
             st['step'] += 1; tot += loss.item() * len(yb)
         st['epoch'] += 1
         row = {'epoch': st['epoch'], 'step': st['step'], 'train_loss': tot / len(order),
                'lr': opt.param_groups[0]['lr'], 'seconds': round(time.time() - t0, 1)}
         if mode == 'dev':
-            row.update({f'train_eval_{k_}': v for k_, v in scores(y[probe], predict(model, batches, probe, amp=amp)).items()})
+            row.update({f'train_eval_{k_}': v for k_, v in scores(y[probe], predict(evaluated, batches, probe, amp=amp)).items()})
             for part, idx in eval_parts.items():
-                row.update({f'{part}_{k_}': v for k_, v in scores(y[idx], predict(model, batches, idx, amp=amp)).items()})
+                row.update({f'{part}_{k_}': v for k_, v in scores(y[idx], predict(evaluated, batches, idx, amp=amp)).items()})
             better = st['best'] is None or (row['valid_acc'], -row['valid_logloss']) > \
                 (st['best']['valid_acc'], -st['best']['valid_logloss'])
             if better:
                 st['best'] = dict(row); st['stale'] = 0
-                torch.save(copy.deepcopy(model.state_dict()), run_dir / 'best_weights.pt')
+                torch.save(copy.deepcopy(evaluated.state_dict()), run_dir / 'best_weights.pt')
             else:
                 st['stale'] += 1
             st['done'] = st['stale'] >= t['patience'] or st['epoch'] >= total_epochs
@@ -212,11 +248,15 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
             msg = ''
         st['history'].append(row)
         torch.save({'signature': sig, 'weights': model.state_dict(), 'opt': opt.state_dict(), 'amp': gs.state_dict(),
-                    'rng': rng_state(), 'state': st}, latest)
+                    'ema': ema.state_dict() if ema is not None else None, 'rng': rng_state(), 'state': st}, latest)
         pd.DataFrame(st['history']).to_csv(run_dir / ('history.csv' if mode == 'dev' else 'refit_history.csv'), index=False)
         print(f"[{run_dir.name}] ep {st['epoch']:02d} loss {row['train_loss']:.3f} {msg} ({row['seconds']}s)", flush=True)
     if mode == 'dev':
         model.load_state_dict(torch.load(run_dir / 'best_weights.pt', map_location=device))
+    else:
+        if ema is not None:
+            model.load_state_dict(ema.state_dict())
+        torch.save(model.state_dict(), run_dir / 'refit_weights.pt')   # the weights used for test predictions
     return model, batches, scaler, data, st, spe
 
 
@@ -285,12 +325,8 @@ def refit(lab_dir, cfg, name, budget='epochs'):
     return run_dir / 'test_refit.npz'
 
 
-@torch.no_grad()
-def embed(lab_dir, cfg, name, weights='dev', parts=('valid', 'stress'), bs=1024):
-    """Save fused representations to <run>/emb_<weights>_<part>.npz.
-
-    weights='dev'  : best development checkpoint, scaler fitted on fit → use on valid/stress (never trained on them).
-    weights='refit': refit checkpoint, scaler fitted on all labels → use on test only."""
+def _load_run(lab_dir, cfg, name, weights):
+    """Rebuild a trained model with the scaler of its training population."""
     lab_dir = Path(lab_dir); run_dir = lab_dir / 'runs' / name
     n = cfg['neural']
     device = device_for(cfg['device'])
@@ -302,21 +338,35 @@ def embed(lab_dir, cfg, name, weights='dev', parts=('valid', 'stress'), bs=1024)
     if weights == 'dev':
         state = torch.load(run_dir / 'best_weights.pt', map_location=device)
     elif weights == 'refit':
-        state = torch.load(run_dir / 'refit_latest.pt', map_location=device, weights_only=False)['weights']
+        f = run_dir / 'refit_weights.pt'
+        state = torch.load(f, map_location=device) if f.exists() else \
+            torch.load(run_dir / 'refit_latest.pt', map_location=device, weights_only=False)['weights']
     else:
         raise ValueError(weights)
     model.load_state_dict(state); model.eval()
-    amp = n['train']['amp'] and device.type == 'cuda'
+    return model, data, scaler, sp, device, n['train']['amp'] and device.type == 'cuda'
+
+
+def _rows(lab_dir, cfg, weights, part, data, sp):
+    if part == 'test':
+        src = assemble(lab_dir, cfg['neural'], 'test', cfg['lot'])
+        return src, np.arange(len(src['ids']))
+    if weights == 'refit':
+        raise ValueError('refit weights have seen valid/stress labels: use weights="dev" on labelled partitions')
+    return data, sp[part]
+
+
+@torch.no_grad()
+def embed(lab_dir, cfg, name, weights='dev', parts=('valid', 'stress'), bs=1024):
+    """Save fused representations to <run>/emb_<weights>_<part>.npz.
+
+    weights='dev'  : best development checkpoint, scaler fitted on fit → use on valid/stress (never trained on them).
+    weights='refit': refit checkpoint, scaler fitted on all labels → use on test only."""
+    model, data, scaler, sp, device, amp = _load_run(lab_dir, cfg, name, weights)
+    run_dir = Path(lab_dir) / 'runs' / name
     out = {}
     for part in parts:
-        if part == 'test':
-            if weights != 'refit':
-                print('note: test embeddings from the dev model')
-            src = assemble(lab_dir, n, 'test', cfg['lot']); rows = np.arange(len(src['ids']))
-        else:
-            if weights == 'refit':
-                raise ValueError('refit weights have seen valid/stress labels: embed them with weights="dev"')
-            src, rows = data, sp[part]
+        src, rows = _rows(lab_dir, cfg, weights, part, data, sp)
         b = Batches(src, scaler, device, False)
         z = []
         for i in range(0, len(rows), bs):
@@ -327,3 +377,16 @@ def embed(lab_dir, cfg, name, weights='dev', parts=('valid', 'stress'), bs=1024)
         np.savez(run_dir / f'emb_{weights}_{part}.npz', obs_ids=src['ids'][rows], z=z.astype(np.float16))
         out[part] = z
     return out
+
+
+def predict_shifted(lab_dir, cfg, name, weights, part, log_gammas):
+    """Test-time depth alignment: predictions with book sizes × exp(g) for each g in log_gammas.
+    Saved to <run>/shift_<weights>_<part>.npz (p has shape (len(log_gammas), n, K))."""
+    model, data, scaler, sp, device, amp = _load_run(lab_dir, cfg, name, weights)
+    src, rows = _rows(lab_dir, cfg, weights, part, data, sp)
+    b = Batches(src, scaler, device, False)
+    shift = DepthShift(src, scaler, device)
+    P = np.stack([predict(model, b, rows, amp=amp, shift=shift, log_gamma=g) for g in log_gammas])
+    np.savez(Path(lab_dir) / 'runs' / name / f'shift_{weights}_{part}.npz', obs_ids=src['ids'][rows],
+             log_gammas=np.asarray(log_gammas, dtype=np.float64), p=P)
+    return P

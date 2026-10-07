@@ -1,0 +1,2 @@
+{"extends": "v3_base.json", "_doc": "Une différence vs v3_base : 60 époques au lieu de 40 (le cosinus s'étale, la meilleure époque tombait en fin de calendrier).",
+ "neural": {"train": {"epochs": 60, "patience": 12}}}
