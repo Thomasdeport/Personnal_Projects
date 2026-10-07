@@ -14,3 +14,7 @@ paper/*.toc
 paper/*.out
 paper/*.loa
 paper/main.pdf
+
+# Notebooks : gardés en local, régénérables via scripts/make_notebook*.py
+*.ipynb
+.ipynb_checkpoints/
