@@ -93,3 +93,21 @@ def apply(P, Z, k, alpha, iters, k_scale=4, balance=True):
     kt = min(max(1, int(round(k * k_scale))), len(Z) - 1)
     Q = smooth(P, knn(Z, kt), alpha, iters)
     return (sinkhorn_balance(Q) if balance else Q), kt
+
+
+def select_pseudo(Q, P, frac=0.4, min_conf=0.0):
+    """Pseudo-labels from a teacher. Keep window i only if the smoothed (Q) and raw (P) predictions agree
+    and max Q_i ≥ min_conf; then, per predicted class, keep the most confident ones up to frac·N/K
+    (class-balanced quota, so the student does not inherit the teacher's class bias).
+    Returns (idx, labels, table of per-class counts)."""
+    n, k = Q.shape
+    yq, conf = Q.argmax(1), Q.max(1)
+    ok = (yq == P.argmax(1)) & (conf >= min_conf)
+    quota = int(frac * n / k)
+    idx = []
+    for c in range(k):
+        cand = np.flatnonzero(ok & (yq == c))
+        idx.append(cand[np.argsort(-conf[cand], kind='stable')][:quota])
+    idx = np.sort(np.concatenate(idx))
+    counts = pd.Series(yq[idx]).value_counts().reindex(range(k), fill_value=0)
+    return idx, yq[idx], pd.DataFrame({'selected': counts, 'eligible': pd.Series(yq[ok]).value_counts().reindex(range(k), fill_value=0)})

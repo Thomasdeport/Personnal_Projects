@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-10-07 (V4)
+Après la V3 (LB 0,6028 pour A, **0,6351** pour B, grâce au vote entre voisins).
+- **Pseudo-étiquetage** (`neural.pseudo`) : des fenêtres test sont ajoutées à l'entraînement avec un poids réduit. Le fichier est vérifié par empreinte et par alignement sur les `obs_id` test. Le scaler reste ajusté sur les seules fenêtres étiquetées. La perte est pondérée par fenêtre.
+- `transductive.select_pseudo` : une fenêtre n'est retenue que si la prédiction lissée (V3 B) et la prédiction brute (V3 A) concordent, avec un quota de 40 % par titre prédit pour ne pas hériter du biais de classes du professeur.
+- `teacher/` : probabilités test de V3 A et B, envoyées sur Kaggle par `kaggle_upload.py`, jamais commitées.
+- Configs `v4_xlong` (90 époques) et `v4_student` (`v3_long` + pseudo-labels, poids 0,5).
+- `CFM_V4.ipynb` : élèves ×2, xlong ×3, ancre `v3_long` ×2 ; refit ; alignement ; grille de voisins ; soumissions C_k20/k40/k60 et D_k40.
+- Un run ou un refit **terminé** avec la même configuration est réutilisé, même si le code a changé depuis (permet de reprendre `lab_v3`).
+- `kaggle_upload.py` : passe à kagglehub la liste exacte des fichiers à ignorer (kagglehub applique `*.npz` à tous les chemins) ; n'exige plus un nom de notebook.
+- 18 tests de contrat (+ pseudo-labels : fenêtres réellement entraînées, fichier modifié refusé).
+
 ## 0.3.0 — 2026-10-07 (V3)
 Après le round 2 (LB 0,59999 : blend `sig2_depthaug` + `signature_no_bias`, équilibré).
 - **Validation par grappes de régime** (`split.valid_mode='cluster'`) : k-means par titre sur profondeur, lots, ticks et venues ; des grappes entières vont en valid, pour approcher des jours non vus. Audit et stress sont inchangés (mêmes tirages).

@@ -159,6 +159,25 @@ def predict(model, batches, idx, bs=1024, amp=False, shift=None, log_gamma=0.):
     return np.concatenate(out) if out else np.zeros((0, model.head.out_features if hasattr(model.head, 'out_features') else 24))
 
 
+def _with_pseudo(lab_dir, cfg, data):
+    """Append pseudo-labelled TEST windows to the training arrays (transductive).
+    File <lab>/<pseudo.file>: obs_ids (test order), idx (selected test rows), y (class indices)."""
+    ps = cfg['neural']['pseudo']
+    path = Path(lab_dir) / ps['file']
+    if ps.get('sha') and hashlib.sha256(path.read_bytes()).hexdigest()[:16] != ps['sha']:
+        raise ValueError(f'{path} differs from the pseudo-label file recorded in the config')
+    z = np.load(path)
+    test = assemble(lab_dir, cfg['neural'], 'test', cfg['lot'])
+    if not np.array_equal(z['obs_ids'], test['ids']):
+        raise ValueError('pseudo-label file is not aligned with the test obs_ids')
+    sel, ylab = z['idx'], z['y'].astype(np.int64)
+    out = dict(data)
+    for key in ['tokens', 'cont', 'ctx', 'oid', 'ids']:
+        out[key] = np.concatenate([data[key], test[key][sel]])
+    out['y'] = np.concatenate([data['y'], ylab])
+    return out, len(data['y']) + np.arange(len(sel))
+
+
 def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, stop_steps=None, total_epochs=None):
     """Shared loop. mode='dev' selects on valid; mode='refit' trains blindly to a fixed budget."""
     n, t = cfg['neural'], cfg['neural']['train']
@@ -166,7 +185,14 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
     device = device_for(cfg['device'])
     seed_all(t['seed'])
     data = assemble(lab_dir, n, 'train', cfg['lot'])
-    scaler = Scaler(data['cont'], data['ctx'], train_idx)
+    scaler = Scaler(data['cont'], data['ctx'], train_idx)          # labelled population only
+    labelled_idx = train_idx
+    weights = None
+    if n.get('pseudo'):
+        data, pidx = _with_pseudo(lab_dir, cfg, data)
+        train_idx = np.r_[train_idx, pidx]
+        weights = np.ones(len(data['y']), np.float32); weights[pidx] = float(n['pseudo']['weight'])
+        print(f'pseudo-labels: +{len(pidx):,} test windows (weight {n["pseudo"]["weight"]})', flush=True)
     batches = Batches(data, scaler, device, t['data_on_gpu'] and device.type == 'cuda')
     k = int(data['y'].max()) + 1
     model = SignatureNet(data['cards'], data['cont'].shape[-1], data['ctx'].shape[1], n, k).to(device)
@@ -197,8 +223,8 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
         set_rng(s['rng']); st = s['state']
         print(f'resume from epoch {st["epoch"]}', flush=True)
     y = data['y']
-    probe = train_idx[np.random.default_rng(0).permutation(len(train_idx))[:5000]]
-    lossf = nn.CrossEntropyLoss(label_smoothing=t['label_smoothing'])
+    probe = labelled_idx[np.random.default_rng(0).permutation(len(labelled_idx))[:5000]]
+    lossf = nn.CrossEntropyLoss(label_smoothing=t['label_smoothing'], reduction='none')
     g = torch.Generator().manual_seed(t['seed'])
     while not st['done']:
         g.manual_seed(t['seed'] * 1000 + st['epoch'])
@@ -207,12 +233,15 @@ def _train(lab_dir, cfg, run_dir, train_idx, eval_parts, mode, stop_epoch=None, 
         for i in range(0, len(order), t['batch_size']):
             if stop_steps is not None and st['step'] >= stop_steps:
                 break
-            x, yb = batches.get(order[i:i + t['batch_size']])
+            bidx = order[i:i + t['batch_size']]
+            x, yb = batches.get(bidx)
             x = aug(*x)
+            wb = torch.as_tensor(weights[bidx], device=device) if weights is not None else None
             for gr in opt.param_groups:
                 gr['lr'] = lr_at(st['step'], total, warm, t['lr'], t['schedule'])
             with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                loss = lossf(model(*x).float(), yb)
+                per = lossf(model(*x).float(), yb)
+                loss = (per * wb).sum() / wb.sum() if wb is not None else per.mean()
             if not torch.isfinite(loss):
                 raise FloatingPointError('non-finite loss')
             opt.zero_grad(set_to_none=True)
@@ -267,6 +296,9 @@ def fit(lab_dir, cfg, name, note=''):
     cfg_path = run_dir / 'config.json'
     if cfg_path.exists() and json.loads(cfg_path.read_text()) != cfg:
         raise ValueError(f'{run_dir} already holds another config: choose another run name')
+    if cfg_path.exists() and (run_dir / 'result.json').exists():
+        print(f'[{name}] run already finished with this config: reusing result.json', flush=True)
+        return json.loads((run_dir / 'result.json').read_text())
     cfg_path.write_text(json.dumps(cfg, indent=2))
     sp = splitlib.load(lab_dir)
     t0 = time.time()
@@ -303,6 +335,9 @@ def refit(lab_dir, cfg, name, budget='epochs'):
     lab_dir = Path(lab_dir)
     run_dir = lab_dir / 'runs' / name
     res = json.loads((run_dir / 'result.json').read_text())
+    if (run_dir / 'test_refit.npz').exists() and res.get('refit_budget') == budget:
+        print(f'[{name}] refit already done ({budget}): reusing test_refit.npz', flush=True)
+        return run_dir / 'test_refit.npz'
     y_len = len(np.load(lab_dir / 'raw' / 'train_y.npy'))
     idx = np.arange(y_len)
     if budget == 'epochs':

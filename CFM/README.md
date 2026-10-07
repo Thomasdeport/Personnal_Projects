@@ -18,6 +18,8 @@ Rien dans ce repo n'a été exécuté sur les vraies données. Les tests et la d
 2. Ouvrir **`CFM_Signature_Lab.ipynb`** (à la racine) et exécuter toutes les cellules : tests logiciels → préparation → screening → XGBoost/LightGBM/MLP → 5 variantes neuronales → seeds des finalistes → blend → soumission. Les CSV sont détectés par nom et par colonnes.
 3. Récupérer `lab/submission_finalists_mean.csv` et `lab_results.zip` : ledger, configs, probabilités, figures.
 
+**V4 :** `CFM_V4.ipynb` (réutilise `/kaggle/working/lab_v3` s'il existe ; environ 4 à 5 h de GPU, non mesuré) : pseudo-étiquetage à partir de V3 B, entraînement de 90 époques, variantes du vote entre voisins. Les fichiers `teacher/` doivent être présents dans le dataset Kaggle (`python scripts/kaggle_upload.py`).
+
 **V3 :** `CFM_V3.ipynb` (nouveau lab `/kaggle/working/lab_v3`, environ 4 à 5 h de GPU, non mesuré) joue sur tous les leviers : validation par grappes, EMA, profondeur, capacité, durée, ensemble 2×3, alignement de profondeur, vote entre voisins. DEMO exécutée : `notebooks/CFM_V3_DEMO_executed.ipynb`.
 
 **Round 2 :** `CFM_Round2.ipynb` (même mise en place, même `CODE_DATASET`) compare 6 configurations sans se fier à la validation aléatoire, puis teste le lissage par voisins. Version DEMO exécutée : `notebooks/CFM_Round2_DEMO_executed.ipynb`.

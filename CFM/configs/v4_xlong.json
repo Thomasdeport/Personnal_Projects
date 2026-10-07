@@ -1,0 +1,2 @@
+{"extends": "v3_base.json", "_doc": "V4 : une différence vs v3_long — 90 époques au lieu de 60 (la meilleure époque tombait à 58–59 sur 60, la validation montait encore).",
+ "neural": {"train": {"epochs": 90, "patience": 15}}}

@@ -286,6 +286,39 @@ def test_neural_v3_ema_and_depth_alignment():
         raise AssertionError('refit weights must not predict labelled partitions')
 
 
+def test_neural_pseudo_labels():
+    import hashlib
+    cfg, _ = lab()
+    from cfm.neural.train import fit, refit
+    from cfm import transductive as T
+    ids = np.asarray(io.load(cfg['lab_dir'], 'test')['ids'])
+    rng = np.random.default_rng(0)
+    A = rng.dirichlet(np.ones(24), len(ids)); B = (A + rng.dirichlet(np.ones(24), len(ids))) / 2
+    sel, ylab, _ = T.select_pseudo(B, A, .5)
+    assert len(sel) > 0 and (A[sel].argmax(1) == ylab).all()
+    path = Path(cfg['lab_dir']) / 'pseudo_test.npz'
+    np.savez(path, obs_ids=ids, idx=sel, y=ylab)
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    c = config.load(ROOT / 'configs' / 'v4_student.json', [f'lab_dir={cfg["lab_dir"]}'])
+    c['split'] = cfg['split']; c['device'] = 'cpu'
+    c['neural'].update({'d_model': 32, 'heads': 2})
+    c['neural']['train'].update({'epochs': 1, 'batch_size': 64, 'amp': False})
+    c['neural']['pseudo'].update({'file': 'pseudo_test.npz', 'sha': sha})
+    r = fit(cfg['lab_dir'], c, 'student')
+    h = pd.read_csv(Path(cfg['lab_dir']) / 'runs' / 'student' / 'history.csv')
+    n_fit = len(split.load(cfg['lab_dir'])['fit'])
+    assert h.step.iloc[0] == int(np.ceil((n_fit + len(sel)) / 64))   # pseudo windows are trained on
+    assert r['valid_acc'] >= 0
+    refit(cfg['lab_dir'], c, 'student', 'epochs')
+    bad = json.loads(json.dumps(c)); bad['neural']['pseudo']['sha'] = '0' * 16
+    try:
+        fit(cfg['lab_dir'], bad, 'student_bad')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('a modified pseudo-label file must be refused')
+
+
 def test_cluster_validation_split():
     cfg, _ = lab()
     other = Path(tempfile.mkdtemp())
