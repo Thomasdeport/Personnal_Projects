@@ -29,7 +29,8 @@ from pathlib import Path
 if sys.platform == 'darwin':
     os.environ.setdefault('OMP_NUM_THREADS', '1')
 
-CODE_DATASET = None   # ex. 'ton-username/cfm-signature-lab' (doit contenir teacher/v3_A_probs.npz et teacher/v3_B_probs.npz)
+CODE_DATASET = None   # ex. 'ton-username/cfm-signature-lab'
+# Professeur V3 : attacher lab_results_v3.zip comme dataset (ou teacher/ via kaggle_upload.py, ou lab_v3 encore présent)
 
 def find_repo():
     if CODE_DATASET:
@@ -98,7 +99,9 @@ code("""
 if DEMO:   # pas de professeur réel : on fabrique un professeur bruité pour vérifier la mécanique
     rng = np.random.default_rng(0); A_p = rng.dirichlet(np.ones(len(classes)), len(ids)); B_p = (A_p + rng.dirichlet(np.ones(len(classes)), len(ids))) / 2
 else:
-    A, B = np.load(REPO / 'teacher' / 'v3_A_probs.npz'), np.load(REPO / 'teacher' / 'v3_B_probs.npz')
+    # Pas dans git (prédictions test privées) : cherchés dans teacher/, dans lab_v3, puis dans tout dataset attaché
+    # (le plus simple : attacher lab_results_v3.zip comme dataset Kaggle).
+    A, B = np.load(T.find_teacher('A', REPO, LAB)), np.load(T.find_teacher('B', REPO, LAB))
     assert np.array_equal(A['obs_ids'], ids) and np.array_equal(B['obs_ids'], ids), 'professeur non aligné sur le test'
     A_p, B_p = A['p'], B['p']
 sel, ylab, tab = T.select_pseudo(B_p, A_p, PSEUDO_FRAC)

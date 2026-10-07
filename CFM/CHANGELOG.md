@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 — 2026-10-07 (v_demo)
+- Dossier **`v_demo/`** : neuf notebooks courts (moins de 20 min de GPU par modèle), générés par `scripts/make_vdemo.py` et décrits dans `v_demo/README.md`.
+  - `V1-benchmark` : hasard, majorité, Naive Bayes, régression logistique, kNN, forêt aléatoire sur les statistiques de la première version.
+  - `V2-tree_models` : XGBoost avec ajout des familles de features une à une, LightGBM, CatBoost, importances, carte utilité/dérive, AUC adversariale.
+  - `V3-sequence_models` : MLP, CNN, GRU et petit Transformer sur l'ancienne représentation.
+  - `V4-best_version_0507` : reconstruction simplifiée de l'hybride V2 (0,507), avec une soumission de contrôle.
+  - `V5-simple_improvements` : un petit CNN (≈ 100 k paramètres) et les améliorations ajoutées une par une (tokens ticks/lots, profondeur, durée, graines, Sinkhorn, voisins), en cascade, avec soumissions par étape.
+  - `data_exploration/D1…D4` : anatomie d'une fenêtre, signatures des titres, dérive train/test, parcours d'ordres.
+- Bibliothèque **`cfm/demo/`** (core, models, train, viz), courte et commentée, indépendante du pipeline principal.
+- Bloc `ev_old` : l'ancienne représentation relative, pour des comparaisons à entrée égale.
+
 ## 0.4.0 — 2026-10-07 (V4)
 Après la V3 (LB 0,6028 pour A, **0,6351** pour B, grâce au vote entre voisins).
 - **Pseudo-étiquetage** (`neural.pseudo`) : des fenêtres test sont ajoutées à l'entraînement avec un poids réduit. Le fichier est vérifié par empreinte et par alignement sur les `obs_id` test. Le scaler reste ajusté sur les seules fenêtres étiquetées. La perte est pondérée par fenêtre.

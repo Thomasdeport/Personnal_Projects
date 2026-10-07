@@ -115,3 +115,18 @@ def ev_sizes(r):
     return {'log_bq_lots': np.log1p(np.where(r.size_ok, r.bq, np.nan) / r.lot),
             'log_aq_lots': np.log1p(np.where(r.size_ok, r.aq, np.nan) / r.lot),
             'slog_flux_lots': slog(r.flux_lots)}
+
+
+@block('ev_old', kind='event', family='event')
+def ev_old(r):
+    """ANCIENNE représentation (≈ V_init / Reaction R2), pour comparaison : tout est relatif à des médianes
+    locales de la fenêtre. Aucune notion de tick ni de lot."""
+    def scale(x):
+        m = nanquantile(np.where(x > 0, x, np.nan), .5)[:, None]
+        return np.where(np.isfinite(m), m, 1.)
+    s, d, f = scale(r.spread_t), scale(r.depth), scale(np.abs(r.flux))
+    return {'spread_rel': np.log1p(r.spread_t / s), 'mid_change_rel': np.arcsinh(r.dmid_h / 2 / s),
+            'price_pos_rel': np.arcsinh((r.price - r.mid) / r.tick / s), 'imbalance': r.imbalance,
+            'depth_rel': np.log1p(r.depth / d), 'depth_change_rel': np.arcsinh(delta(r.depth) / d),
+            'flux_rel': slog(r.flux / f), 'order_seen': (r.occ > 0).astype(float),
+            'same_as_prev': np.c_[np.zeros(r.n), r.oid[:, 1:] == r.oid[:, :-1]].astype(float)}

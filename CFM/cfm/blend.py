@@ -85,3 +85,36 @@ def submission(lab_dir, runs, weights=None, source='test_refit', balance=False, 
     (lab_dir / f'{name}.json').write_text(json.dumps(info, indent=2, default=str))
     ledger(lab_dir, {'name': name, 'kind': 'submission', **{k: v for k, v in info.items() if k != 'class_counts'}})
     return path
+
+
+def find_teacher(name, repo, lab_dir=None, roots=('/kaggle/input',)):
+    """Locate the V3 teacher probabilities (name 'A' or 'B'). They are NOT in git (test predictions stay private).
+    Search order: <repo>/teacher/v3_<name>_probs.npz → <lab>/submission_v3_<name>_probs.npz (V3 lab still present)
+    → any attached Kaggle dataset containing v3_<name>_probs.npz or submission_v3_<name>_probs.npz
+    (e.g. lab_results_v3.zip uploaded as a dataset, unzipped or not)."""
+    from pathlib import Path
+    files = [f'v3_{name}_probs.npz', f'submission_v3_{name}_probs.npz']
+    cands = [Path(repo) / 'teacher' / files[0]]
+    if lab_dir:
+        cands.append(Path(lab_dir) / files[1])
+    for root in roots:
+        if Path(root).exists():
+            for f in files:
+                cands += sorted(Path(root).glob(f'**/{f}'))
+    for c in cands:
+        if c.exists():
+            print(f'professeur {name} : {c}')
+            return c
+    for root in roots:                                       # zip attached without extraction
+        for z in sorted(Path(root).glob('**/lab_results_v3*.zip')) if Path(root).exists() else []:
+            import zipfile
+            with zipfile.ZipFile(z) as zf:
+                hit = next((n for n in zf.namelist() if n.endswith(files[1])), None)
+                if hit:
+                    out = Path('/kaggle/working' if Path('/kaggle/working').exists() else '.') / files[1]
+                    out.write_bytes(zf.read(hit)); print(f'professeur {name} : extrait de {z}'); return out
+    raise FileNotFoundError(
+        f'Probabilités du professeur V3 {name} introuvables. Trois solutions : (1) attacher en dataset Kaggle '
+        f'lab_results_v3.zip (il contient submission_v3_A_probs.npz et submission_v3_B_probs.npz) ; '
+        f'(2) publier le code avec scripts/kaggle_upload.py (envoie teacher/) ; (3) relancer dans la session où lab_v3 existe.')
+
