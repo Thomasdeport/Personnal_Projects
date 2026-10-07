@@ -1,37 +1,43 @@
-# v_demo — comprendre le projet en neuf notebooks courts
+# v_demo — le projet en deux notebooks
 
-Ce dossier raconte le projet **sans le pipeline complet** : des modèles simples, chacun entraîné en moins de 20 minutes sur GPU, avec un protocole identique partout et une figure par question.
+Deux notebooks, un seul « Run All » chacun, avec un protocole identique partout. Chaque modèle s'entraîne en moins de 20 min sur GPU.
 
-| Notebook | Question | Durée GPU (estimée) |
-|---|---|---|
-| `V1-benchmark` | Que vaut-on sans rien d'intelligent ? (hasard, majorité, Naive Bayes, régression logistique, kNN, forêt aléatoire) | 5–10 min |
-| `V2-tree_models` | Les features du papier aident-elles **le même** XGBoost ? LightGBM, CatBoost, importances, carte utilité/dérive, AUC adversariale | 10–20 min |
-| `V3-sequence_models` | Lire la séquence plutôt que des statistiques : MLP, CNN, GRU, petit Transformer, sur l'**ancienne** représentation | ~15 min |
-| `V4-best_version_0507` | Reconstruction simplifiée du meilleur modèle d'avant (Transformer hybride V2, 0,507 au LB) | ~15 min |
-| **`V5-simple_improvements`** | **Le cœur : un petit CNN, puis chaque amélioration du papier ajoutée une à une** | 15–20 min |
-| `data_exploration/D1-anatomy_of_a_window` | Une vraie fenêtre : carnet, événements, parcours d'ordres, tokens | < 2 min |
-| `data_exploration/D2-stock_signatures` | Ce qui distingue les titres : ticks, lots, venues, profondeur, empreinte de tokens | < 3 min |
-| `data_exploration/D3-train_test_shift` | Ce qui change entre train et test ; hypothèse « prix plus élevés » | ~5 min |
-| `data_exploration/D4-order_lifecycles` | Comment vivent les ordres, titre par titre | < 2 min |
+## `CFM_demo_models.ipynb` — tous les modèles (≈ 1 h à 1 h 20 sur GPU, non mesuré)
+
+| Partie | Contenu |
+|---|---|
+| 1 · Benchmark | Hasard, majorité, Naive Bayes, régression logistique, kNN, forêt aléatoire, sur les statistiques de la première version |
+| 2 · Arbres | XGBoost avec les familles de features ajoutées une à une, LightGBM, CatBoost, importances, carte utilité/dérive, AUC adversariale |
+| 3 · Séquences | MLP, CNN, GRU, petit Transformer, sur l'**ancienne** représentation |
+| 4 · Le 0,507 | Reconstruction simplifiée du Transformer hybride V2, avec une soumission de contrôle |
+| 5 · Améliorations | Un petit CNN (≈ 100 k paramètres), puis : tokens ticks/lots → profondeur → durée → 3 graines → Sinkhorn → vote entre voisins. Cascade, scores publics réels pour comparaison, confusions, carte t-SNE, soumissions par étape |
+| Synthèse | Tous les modèles sur un même graphique (`synthese_modeles.csv`) |
+
+## `CFM_demo_features.ipynb` — les données et les features (≈ 10 min)
+
+| Partie | Contenu |
+|---|---|
+| 1 · Anatomie | Une vraie fenêtre (titre à gros tick contre titre à petit tick), parcours d'ordres, tokens |
+| 2 · Signatures | Ticks, lots, venues, position et profondeur par titre, train contre test ; empreinte de tokens |
+| 3 · Dérive | Carte utilité/dérive, colonnes les plus décalées, profondeur contre odd lots, AUC adversariale |
+| 4 · Ordres | Transitions A/D/U par titre, profils de parcours, stabilité train/test |
+
+Le test n'a pas de labels : pour le découper par titre, on utilise le titre **prédit** par V3 B, si `teacher/v3_B_probs.npz` est présent dans le code. Sinon, les barres « test » sont masquées.
 
 ## Lancer sur Kaggle
 
-1. Publier le code (dossier `CFM`, `teacher/` compris) : `python scripts/kaggle_upload.py --notes "v_demo"`.
-2. Ouvrir un notebook de `v_demo/` dans Kaggle (GPU), attacher les CSV du challenge, renseigner `CODE_DATASET` dans la première cellule, puis « Run All ».
-3. Le **premier** notebook lancé construit le cache dans `/kaggle/working/lab_v3` (≈ 20 min, une seule fois par session). Les suivants le réutilisent. Si le lab de la V3 ou de la V4 est encore là, rien n'est recalculé.
-4. Les figures sont écrites dans `figures/<notebook>/` et zippées à la fin de chaque notebook.
+1. Attacher le code (dataset) et les CSV du challenge, activer le GPU.
+2. Renseigner `CODE_DATASET` dans la première cellule de code, puis « Run All ».
+3. Le cache est construit dans `/kaggle/working/lab_v3` lors du premier notebook (≈ 20 min). Il est réutilisé par le second, et par V3/V4 s'il existe déjà.
+4. Les figures sont enregistrées dans `figures/models/` et `figures/features/`, puis zippées à la fin.
 
-`DEMO = True` dans la première cellule fait tourner un notebook en quelques minutes sur CPU, avec des données synthétiques. Ça vérifie la mécanique, pas la performance.
+`DEMO = True` : données synthétiques sur CPU, quelques minutes. Ça vérifie la mécanique, les scores n'ont aucune valeur.
 
-## Le protocole, commun à tous les notebooks
+## Le protocole
 
 - **fit** entraîne ; la standardisation est estimée sur le fit seulement.
-- **valid** choisit l'époque. Ce sont des grappes de régimes tenues à l'écart : plus dur qu'un tirage aléatoire, mais encore optimiste par rapport au leaderboard.
-- **stress** (les fenêtres aux carnets les moins profonds, comme le test) est un diagnostic.
-- La précision **équilibrée** applique la correction de Sinkhorn (explication dans V5).
+- **valid** (grappes de régimes tenues à l'écart) choisit l'époque.
+- **stress** (carnets les moins profonds, comme le test) est un diagnostic.
+- La précision **équilibrée** applique la correction de Sinkhorn.
 
-## La bibliothèque
-
-`cfm/demo/` (≈ 500 lignes commentées) : `core.py` (données), `models.py` (modèles), `train.py` (boucle d'entraînement), `viz.py` (figures). Elle est indépendante du pipeline principal et faite pour être lue.
-
-Les notebooks sont générés par `python scripts/make_vdemo.py` et ne sont pas suivis par git.
+Les notebooks sont générés par `python scripts/make_vdemo.py` (non suivis par git). La bibliothèque est dans `cfm/demo/` : courte, commentée, indépendante du pipeline principal.

@@ -163,7 +163,8 @@ run('XGBoost — + ticks', core.OLD_STATS + ['ticks'])
 run('XGBoost — + ticks + lots', core.OLD_STATS + ['ticks', 'lots'])
 run('XGBoost — + ticks + lots + position + ordres', core.OLD_STATS + ['ticks', 'lots', 'position', 'orders'])
 run('XGBoost — toutes les features', ALL)
-run('LightGBM — toutes les features', ALL, 'lgbm')
+if sys.platform != 'darwin':   # sous macOS, LightGBM + torch dans un même processus peut planter (OpenMP)
+    run('LightGBM — toutes les features', ALL, 'lgbm')
 run('CatBoost — toutes les features', ALL, 'catboost')
 res = pd.DataFrame(rows); res
 """),
@@ -603,9 +604,101 @@ if y_test_pred is not None:
 ('code', FOOTER),
 ]
 
+def body(cells, part_title, collect=None):
+    """Section of a combined notebook: drop the per-notebook header/footer, demote the title, optionally
+    record the section's result table into RESULTS right after it is built."""
+    out = []
+    for kind, src in cells:
+        s = src.strip()
+        if kind == 'code' and (s.startswith('import os, sys, json, time') or s == FOOTER):
+            continue
+        if kind == 'md' and s.startswith('# '):
+            s = '## ' + part_title + ' — ' + s[2:].split('—', 1)[-1].strip()
+        if kind == 'code' and s.startswith('from cfm import io') or (kind == 'code' and s == TEACHER.strip() and collect == 'skip_teacher'):
+            continue
+        out.append((kind, s))
+        if collect and collect != 'skip_teacher' and kind == 'code' and ('res = pd.DataFrame(rows); res' in s):
+            out.append(('code', f"RESULTS.append(res.assign(partie='{part_title}'))"))
+    return out
+
+
+MODELS_INTRO = """
+# CFM — tous les modèles en un seul notebook
+
+Un seul « Run All » raconte le projet, du plus simple au meilleur. Protocole identique partout :
+- `fit` entraîne ;
+- `valid` (grappes de régimes tenues à l'écart) choisit ;
+- `stress` (carnets peu profonds, comme le test) diagnostique ;
+- la précision **équilibrée** applique la correction de Sinkhorn.
+
+| Partie | Question | Durée GPU estimée |
+|---|---|---|
+| 1 · Benchmark | Que vaut-on sans rien d'intelligent ? (hasard, majorité, Naive Bayes, logistique, kNN, forêt aléatoire) | 5–10 min |
+| 2 · Arbres | Les features du papier aident-elles **le même** XGBoost ? LightGBM, CatBoost, importances, utilité/dérive, AUC adversariale | 10–20 min |
+| 3 · Séquences | MLP, CNN, GRU, petit Transformer sur l'**ancienne** représentation | ~15 min |
+| 4 · Le 0,507 | Reconstruction simplifiée de l'hybride V2 | ~15 min |
+| 5 · Améliorations | Un petit CNN, puis chaque amélioration du papier ajoutée une à une | 15–20 min |
+| Synthèse | Tous les modèles sur un même graphique | < 1 min |
+
+Total : environ 1 h à 1 h 20 sur GPU, non mesuré. Le cache est construit une fois (≈ 20 min), ou réutilisé si `lab_v3` existe.
+`DEMO = True` : données synthétiques sur CPU, quelques minutes, pour vérifier la mécanique (scores sans valeur).
+"""
+
+MODELS_HEADER = header('models', '\n'.join([
+    'import sys',
+    'from sklearn.linear_model import LogisticRegression', 'from sklearn.ensemble import RandomForestClassifier',
+    'from sklearn.neighbors import KNeighborsClassifier', 'from sklearn.naive_bayes import GaussianNB',
+    'from sklearn.preprocessing import StandardScaler',
+    'from cfm import tabular, screen, plots as cplots', 'from cfm.registry import BLOCKS',
+    'from cfm.blend import sinkhorn_balance', 'from cfm import transductive as TR'])) + '\nRESULTS = []'
+
+SYNTHESIS = [
+('md', """
+## Synthèse — tous les modèles côte à côte
+Même protocole, mêmes fenêtres. La cascade de la partie 5 et les scores publics réels figurent plus haut.
+"""),
+('code', """
+allres = pd.concat(RESULTS, ignore_index=True)
+cols = [c for c in ['partie', 'modèle', 'valid', 'valid_équilibré', 'stress', 'stress_équilibré', 'minutes'] if c in allres]
+allres = allres[cols].sort_values('stress_équilibré', ascending=False)
+allres.to_csv(viz.FIG_DIR / 'synthese_modeles.csv', index=False)
+viz.compare(allres.assign(modèle=allres['partie'].str.split(' ').str[0] + ' · ' + allres['modèle']),
+            ('valid_équilibré', 'stress_équilibré'), 'Tous les modèles (précision équilibrée)', 'synthese_modeles')
+allres.round(4)
+"""),
+]
+
+FEATURES_INTRO = """
+# CFM — les données et les features en un seul notebook
+
+| Partie | Question | Durée |
+|---|---|---|
+| 1 · Anatomie | Une vraie fenêtre : carnet, événements, parcours d'ordres, tokens | < 2 min |
+| 2 · Signatures | Ce qui distingue les titres : ticks, lots, venues, position, profondeur, empreinte de tokens | < 3 min |
+| 3 · Dérive | Ce qui change entre train et test ; hypothèse « prix plus élevés » ; AUC adversariale | ~5 min |
+| 4 · Ordres | Comment vivent les ordres, titre par titre | < 2 min |
+
+Pas de réseau de neurones ici (torch n'est pas importé). Le test n'a pas de labels : pour le découper par titre, on utilise le titre **prédit** par la meilleure soumission (V3 B), si `teacher/v3_B_probs.npz` est présent.
+"""
+
+FEATURES_HEADER = header('features', 'from cfm import io, screen, plots as cplots\nfrom cfm.features.common import Raw\nfrom cfm.registry import context',
+                         use_torch=False)
+
+
+def combined():
+    models = [('md', MODELS_INTRO), ('code', MODELS_HEADER)]
+    for cells, title in [(V1, 'Partie 1 · Benchmark'), (V2, 'Partie 2 · Arbres'), (V3, 'Partie 3 · Séquences'),
+                         (V4, 'Partie 4 · Le 0,507'), (V5, 'Partie 5 · Améliorations')]:
+        models += body(cells, title, collect=True)
+    models += SYNTHESIS + [('code', FOOTER)]
+    feats = [('md', FEATURES_INTRO), ('code', FEATURES_HEADER)]
+    for cells, title, flag in [(D1, 'Partie 1 · Anatomie', None), (D2, 'Partie 2 · Signatures', None),
+                               (D3, 'Partie 3 · Dérive', None), (D4, 'Partie 4 · Ordres', 'skip_teacher')]:
+        feats += body(cells, title, collect=flag)
+    feats += [('code', FOOTER)]
+    return notebook('CFM_demo_models.ipynb', models), notebook('CFM_demo_features.ipynb', feats)
+
+
 if __name__ == '__main__':
-    for name, cells in [('V1-benchmark.ipynb', V1), ('V2-tree_models.ipynb', V2), ('V3-sequence_models.ipynb', V3),
-                        ('V4-best_version_0507.ipynb', V4), ('V5-simple_improvements.ipynb', V5),
-                        ('data_exploration/D1-anatomy_of_a_window.ipynb', D1), ('data_exploration/D2-stock_signatures.ipynb', D2),
-                        ('data_exploration/D3-train_test_shift.ipynb', D3), ('data_exploration/D4-order_lifecycles.ipynb', D4)]:
-        print(notebook(name, cells))
+    for p in combined():
+        print(p)
