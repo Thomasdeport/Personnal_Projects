@@ -87,7 +87,7 @@
 \begin{abstract}
 \noindent On cherche à identifier lequel de $K=24$ titres a produit une fenêtre de $L=100$ événements consécutifs d'un carnet d'ordres agrégé, lorsque le test provient d'une période différente de celle de l'entraînement. Ce document décrit, équations à l'appui, le pipeline \emph{CFM Signature Lab} et le compare au pipeline précédent (Regime Lab V2, CFM Reaction R1/R2, V\_init).
 Trois idées le structurent : (i) réexprimer la donnée dans ses \emph{unités naturelles}, ticks et lots, plutôt qu'en multiples de médianes locales ; (ii) transformer chaque événement en un \emph{n-uplet de tokens discrets}, aux seuils fixés a priori, consommé par un encodeur convolutif et attentionnel (SignatureNet) ; (iii) sélectionner les modèles sur un protocole qui reconnaît que la validation aléatoire est biaisée par la dépendance intra-journalière, puis corriger le \emph{décalage de prior} induit par le changement de période grâce à un équilibrage de Sinkhorn.
-Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ après équilibrage, contre $0{,}5072$ pour le meilleur résultat antérieur. Nous montrons aussi les limites : la validation aléatoire surestime le score public de 28 points, l'apport des différentes briques n'est pas encore séparé causalement, et l'équilibrage est transductif.
+Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ après équilibrage, contre $0{,}5072$ pour le meilleur résultat antérieur. Trois itérations plus tard (augmentation de profondeur, entraînement plus long, alignement de profondeur et surtout vote entre voisins), le score atteint $\mathbf{0{,}6351}$. Nous montrons aussi les limites : la validation aléatoire surestime le score public de 28 points, l'apport des différentes briques n'est pas encore séparé causalement, et l'équilibrage est transductif.
 \end{abstract}
 
 \tableofcontents
@@ -99,6 +99,7 @@ Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ apr�
 \input{sections/04_donnees}
 \input{sections/05_unites}
 \input{sections/06_ordres_tokens}
+\input{sections/06b_exemple}
 \input{sections/07_blocs}
 \input{sections/08_protocole}
 \input{sections/09_screening}

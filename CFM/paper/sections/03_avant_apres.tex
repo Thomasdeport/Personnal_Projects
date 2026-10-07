@@ -37,7 +37,7 @@ Cette section sert de carte. Les deux schémas suivent une fenêtre de la lectur
 \node[newst, below=of n5] (n6) {\textbf{6. SignatureNet} (§\ref{sec:signaturenet}) \\ $\sum$ embeddings + linéaire + position → 2 conv. dilatées → 2 attentions avec biais $\beta_h\cdot[\text{même ordre}]$ → pooling attention/moy/max \\ ⊕ contexte 79 → 128 → 64 ; fusion 160 → 96 → 24 \quad (342\,913 paramètres).};
 \node[newst, below=of n6] (n7) {\textbf{7. Entraînement et sélection} (§\ref{sec:entrainement}) \\ AdamW, warmup + cosinus, 40 époques ; époque choisie en valid ; \new{configs comparées sur le stress équilibré} ; refit sur tous les labels.};
 \node[newst, below=of n7] (n8) {\textbf{8. Sortie} (§\ref{sec:sinkhorn}) \\ moyenne de 2 configs $\times$ 2 seeds → \new{équilibrage de Sinkhorn} (coefficient $w_c$ par titre) → $\arg\max$.};
-\node[font=\scriptsize, below=1mm of n8, text width=5.6cm, align=center] (ns) {valid 0,85 (non prédictif) — LB $\mathbf{0{,}5700}$ puis $\mathbf{0{,}5958}$};
+\node[font=\scriptsize, below=1mm of n8, text width=5.6cm, align=center] (ns) {LB $0{,}5700$ → $0{,}5958$ → $\mathbf{0{,}6351}$ (V3)};
 \foreach \a/\b in {n1/n2,n2/n3,n3/n4,n4/n5,n5/n6,n6/n7,n7/n8} \draw[arr] (\a) -- (\b);
 \foreach \a/\b in {o1/n1,o2/n2,o3/n3,o4/n4,o5/n5,o6/n6,o7/n7,o8/n8} \draw[dashed, gray!50] (\a.east) -- (\b.west);
 \end{tikzpicture}

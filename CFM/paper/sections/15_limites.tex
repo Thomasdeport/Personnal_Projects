@@ -11,16 +11,16 @@
 
 \subsection{Prochaines expériences}
 \begin{center}\small
-\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{4cm}}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.4cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{3.8cm}}
 \toprule
 Expérience & Hypothèse & Abandon si\\
 \midrule
-\code{gru\_wide} contre \code{signature\_no\_bias} & le design (conv + attention) bat un GRU de même taille & écart inférieur à l'écart entre graines\\
-\code{sig2\_nolevels} & sans tailles absolues, le transfert est meilleur & stress équilibré en baisse\\
-\code{sig2\_depthaug} & apprendre l'invariance à la profondeur aide sous prix plus élevés & stress équilibré inchangé\\
-Lissage \code{window} / \code{embedding} & les voisins de régime identifient le titre-jour & pureté faible, ou gain < 0,5 pt\\
-Validation par groupes & regrouper des fenêtres proches approche des jours inconnus & ordre des modèles différent de celui du LB\\
-Budget & 40 époques sont insuffisantes (fin de cosinus) & gain en stress inférieur à l'écart entre graines\\
+V4 : pseudo-étiquetage & apprendre sur des fenêtres test étiquetées par V3 B (accord lissé/brut, quota par titre) adapte le modèle à la période & C\_k40 $\le$ D\_k40 au LB\\
+V4 : 90 époques & l'entraînement n'était pas saturé à 60 & gain inférieur à l'écart entre graines\\
+V4 : $k$ au test & $k=40$ n'est pas optimal & variantes à $\pm0{,}3$ pt de B\\
+Token $D^{\text{pré}}_t$ (§\ref{sec:dpost}) & distinguer « où était l'ordre » de « ce qu'il a fait au carnet » & stress équilibré inchangé\\
+SignatureLite & 3 convolutions + pooling (≈ 100\,k paramètres) suffisent, sans attention & écart > 0,5 pt vs \code{v3\_long}\\
+Regroupement explicite en jours & voter par paquet de 20 fenêtres plutôt que par $k$ voisins & pas de gain sur B\\
 \bottomrule
 \end{tabularx}
 \end{center}

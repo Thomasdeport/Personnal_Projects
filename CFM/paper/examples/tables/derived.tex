@@ -1,0 +1,26 @@
+\begin{tabular}{rrrrrrrrrl}
+\toprule
+$t$ & $\rho_t$ & $n_t$ & $a^{\leftarrow}_t$ & $g_t$ & $S_t$ & $h_t$ & $D_t$ & $F_t$ & lecture\\
+\midrule
+1 & 0 & 0 & — & 0 & 1 & 0 & 0 & $-$1 & \parbox[t]{6.2cm}{\raggedright\scriptsize ordre déjà présent avant la fenêtre (1re apparition = U), réduit d'un lot}\\
+2 & 1 & 0 & — & 0 & 1 & 0 & 0 & 1 & \parbox[t]{6.2cm}{\raggedright\scriptsize ajout d'un lot au meilleur ask}\\
+3 & 2 & 0 & — & 0 & 1 & 0 & 2 & 2 & \parbox[t]{6.2cm}{\raggedright\scriptsize ajout de 2 lots, 2 ticks derrière le meilleur bid}\\
+4 & 1 & 1 & A & 2 & 1 & 0 & 0 & $-$1 & \parbox[t]{6.2cm}{\raggedright\scriptsize l'ordre de t=2 est exécuté (suppression liée à un trade)}\\
+5 & 3 & 0 & — & 0 & 1 & 0 & 1 & 0{,}37 & \parbox[t]{6.2cm}{\raggedright\scriptsize odd lot (37 actions), 1 tick derrière le meilleur ask}\\
+6 & 0 & 1 & U & 5 & 1 & 0 & 0 & $-$2 & \parbox[t]{6.2cm}{\raggedright\scriptsize annulation de l'ordre pré-existant}\\
+7 & 4 & 0 & — & 0 & 2 & 1 & $-$1 & $-$2 & \parbox[t]{6.2cm}{\raggedright\scriptsize trade vide le meilleur ask : l'ask passe à 0,02, spread 2 ticks, le mid monte d'un demi-tick}\\
+8 & 2 & 1 & A & 5 & 2 & 0 & 2 & 1 & \parbox[t]{6.2cm}{\raggedright\scriptsize l'ordre profond de t=3 grossit d'un lot}\\
+9 & 5 & 0 & — & 0 & 1 & $-$1 & 0 & 1 & \parbox[t]{6.2cm}{\raggedright\scriptsize ajout DANS le spread : améliore l'ask}\\
+10 & 5 & 1 & A & 1 & 2 & 1 & $-$1 & $-$1 & \parbox[t]{6.2cm}{\raggedright\scriptsize le même ordre est annulé aussitôt (ajouté puis supprimé)}\\
+11 & 6 & 0 & — & 0 & 1 & 1 & 0 & 1{,}5 & \parbox[t]{6.2cm}{\raggedright\scriptsize ajout DANS le spread côté bid, taille mixte (1,5 lot)}\\
+12 & 3 & 1 & A & 7 & 1 & 0 & 0 & 0{,}63 & \parbox[t]{6.2cm}{\raggedright\scriptsize l'odd lot de t=5 est complété à un lot rond}\\
+13 & 6 & 1 & A & 2 & 2 & $-$1 & $-$1 & $-$1{,}5 & \parbox[t]{6.2cm}{\raggedright\scriptsize l'ordre de t=11 est exécuté : le bid redescend}\\
+14 & 7 & 0 & — & 0 & 2 & 0 & 6 & 10 & \parbox[t]{6.2cm}{\raggedright\scriptsize gros ordre (10 lots) très loin (6 ticks)}\\
+15 & 7 & 1 & A & 1 & 2 & 0 & 6 & $-$5 & \parbox[t]{6.2cm}{\raggedright\scriptsize réduit de moitié}\\
+16 & 8 & 0 & — & 0 & 2 & 0 & 0 & 1 & \parbox[t]{6.2cm}{\raggedright\scriptsize ajout d'un lot au meilleur ask}\\
+17 & 8 & 1 & A & 1 & 2 & 0 & 0 & 1 & \parbox[t]{6.2cm}{\raggedright\scriptsize le même ordre grossit}\\
+18 & 8 & 2 & U & 1 & 3 & 1 & $-$1 & $-$3 & \parbox[t]{6.2cm}{\raggedright\scriptsize exécuté sur une AUTRE venue (3) : l'ask passe à 0,03, spread 3 ticks}\\
+19 & 9 & 0 & — & 0 & 2 & $-$1 & 0 & 1 & \parbox[t]{6.2cm}{\raggedright\scriptsize ajout dans le spread, l'ask revient à 0,02}\\
+20 & 2 & 2 & U & 12 & 2 & 0 & 2 & $-$3 & \parbox[t]{6.2cm}{\raggedright\scriptsize annulation de l'ordre profond de t=3}\\
+\bottomrule
+\end{tabular}

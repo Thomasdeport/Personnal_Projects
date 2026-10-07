@@ -23,7 +23,7 @@ Stress & Queue \old{haute} de profondeur, codée en dur & Queue orientée \new{v
 Sélection & Validation aléatoire & Stress équilibré ; la validation aléatoire est jugée non prédictive (écart de 28 points)\\
 Sortie & $\arg\max$ des probabilités & Moyenne de 4 modèles, puis \new{équilibrage de Sinkhorn} (transductif)\\
 \midrule
-Score public & $0{,}5072$ & $0{,}5700$ (brut), $\mathbf{0{,}5958}$ (équilibré)\\
+Score public & $0{,}5072$ & $0{,}5700$ (brut), $0{,}5958$ (équilibré), $\mathbf{0{,}6351}$ (V3, avec vote entre voisins)\\
 \bottomrule
 \end{tabularx}
 \caption{Les différences essentielles.}\label{tab:resume}
@@ -39,7 +39,7 @@ Score public & $0{,}5072$ & $0{,}5700$ (brut), $\mathbf{0{,}5958}$ (équilibré)
 \begin{enumerate}
 \item Une couche de données \emph{validée} : alignement par \code{obs\_id}, contiguïté, renumérotation des ordres qui ne conserve que les égalités (section~\ref{sec:donnees}).
 \item Une représentation en unités naturelles. Nous montrons formellement ce que la normalisation par médiane locale efface (section~\ref{sec:unites}).
-\item Des tokens d'événements sans aucun seuil appris, et des statistiques de parcours d'ordres calculées de façon vectorisée et exacte (section~\ref{sec:ordres}).
+\item Des tokens d'événements sans aucun seuil appris, et des statistiques de parcours d'ordres calculées de façon vectorisée et exacte (section~\ref{sec:ordres}), illustrés sur un exemple complet calculé par le code lui-même (section~\ref{sec:exemple}).
 \item Un entonnoir de screening : utilité contre dérive, AUC adversariale, ajout et retrait réentraînés, intervalles appariés (section~\ref{sec:screening}).
 \item SignatureNet, décrit équation par équation, avec un décompte exact de ses paramètres (section~\ref{sec:signaturenet}).
 \item La correction de prior par Sinkhorn : dérivation, convergence, conditions de validité, effet observé (section~\ref{sec:sinkhorn}).

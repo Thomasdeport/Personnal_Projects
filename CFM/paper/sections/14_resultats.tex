@@ -131,3 +131,77 @@ Run & Param. & Ép. & Min & Valid & Stress & Stress éq.\\
 \begin{figure}[H]\centering\includegraphics[width=.75\linewidth]{figures/valid_stress_lb.png}
 \caption{Les trois mesures pour les deux soumissions. Le classement relatif (brut < équilibré) est le même partout. L'écart absolu, lui, ne l'est pas.}\end{figure}
 L'écart validation → LB est de 28 points. L'écart stress → LB est de 17 points (brut) et de 21 points (équilibré). Aucune partition interne n'estime donc le score public. En revanche, le stress a correctement \emph{ordonné} les deux variantes. C'est pourquoi le round 2 classe les configurations sur le stress équilibré, et ancre les indicateurs sans labels sur les deux scores connus.
+
+\subsection{Round 2 : une différence à la fois}\label{sec:r2}
+Six configurations, deux graines chacune, classées par précision \emph{stress équilibrée}. Cette règle a été fixée avant les résultats, parce qu'au round 1 le stress avait correctement ordonné les deux soumissions.
+\begin{table}[H]\centering\small
+\begin{tabular}{lrrrrr}
+\toprule
+Configuration (différence vs \code{signature\_no\_bias}) & Param. & Valid & Stress & Stress éq. & $\Delta$\\
+\midrule
+\code{sig2\_depthaug} (profondeur $\times e^{\mathcal{N}(0;0{,}3)}$) & 342\,905 & 0,828 & \textbf{0,755} & \textbf{0,786} & \textbf{+1,3}\\
+\code{signature\_no\_bias} (référence) & 342\,905 & 0,828 & 0,725 & 0,773 & —\\
+\code{signature} (avec biais même ordre) & 342\,913 & 0,826 & 0,711 & 0,763 & $-1{,}0$\\
+\code{sig2\_nolevels} (sans tailles absolues) & 341\,721 & 0,812 & 0,725 & 0,756 & $-1{,}7$\\
+\code{gru\_wide} (BiGRU, capacité égale) & 331\,625 & 0,812 & 0,715 & 0,751 & $-2{,}2$\\
+\code{signature\_robust} & 342\,913 & 0,832 & 0,689 & 0,750 & $-2{,}2$\\
+\bottomrule
+\end{tabular}
+\caption{Round 2, moyenne de 2 graines. Les deux graines de \code{sig2\_depthaug} donnent 0,7855 et 0,7858 en stress équilibré.}
+\end{table}
+\noindent Enseignements :
+\begin{itemize}
+\item L'hypothèse « prix plus élevés » (section~\ref{sec:aug}) tient en stress.
+\item À capacité égale, convolutions et attention battent le GRU : le gain du round 1 ne venait pas seulement de la taille.
+\item Les tailles absolues restent utiles au réseau, à l'inverse du screening tabulaire (section~\ref{sec:screening}).
+\end{itemize}
+Soumission : \code{sig2\_depthaug} $\times2$ + \code{signature\_no\_bias} $\times2$, équilibrée, donne $\mathbf{0{,}59999}$ ($+0{,}4$ point). Le stress annonçait $+0{,}9$ à $+1{,}9$ : il a prédit le sens de l'effet, mais en a surestimé l'ampleur.
+
+\subsection{V3 : validation par grappes, durée, alignement, voisins}\label{sec:v3}
+\paragraph{Validation par grappes.} Retirer de \code{valid} des grappes entières de régime fait baisser l'accuracy de l'ancre de 0,828 (aléatoire) à 0,772. C'est plus réaliste, mais encore loin du LB : la distance médiane de \code{valid} au fit (3,20) reste égale à celle de l'audit aléatoire (3,20). Les grappes de régime ne séparent qu'en partie les jours.
+
+\begin{table}[H]\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+Configuration (différence vs \code{v3\_base}) & Valid éq. & Stress éq. & Score & $\Delta$\\
+\midrule
+\code{v3\_long} (60 époques) & \textbf{0,789} & \textbf{0,793} & \textbf{0,791} & \textbf{+1,7}\\
+\code{v3\_ema} & 0,773 & 0,777 & 0,775 & +0,1\\
+\code{v3\_depth05} ($\sigma=0{,}5$) & 0,774 & 0,775 & 0,775 & +0,1\\
+\code{v3\_base} (\code{sig2\_depthaug}) & 0,772 & 0,776 & 0,774 & —\\
+\code{v3\_nodepth} & 0,774 & 0,763 & 0,768 & $-0{,}6$\\
+\code{v3\_big} ($d=128$, 681\,k param.) & 0,767 & 0,761 & 0,764 & $-1{,}0$\\
+\bottomrule
+\end{tabular}
+\caption{V3, moyenne de 2 graines. Score = moyenne des deux précisions équilibrées. La meilleure époque de \code{v3\_long} tombe à 58--59 sur 60 : l'entraînement n'est pas saturé. \code{v3\_big} surapprend (0,977 sur le train contre 0,762 en validation).}
+\end{table}
+
+\paragraph{Alignement de profondeur.} Sur le stress, multiplier les tailles par $\gamma=e^{\Delta}$ ($\Delta$ = écart de log-profondeur médiane, estimé sans labels) fait passer la précision équilibrée de 0,8205 à 0,8268. Appliqué au test, $\gamma_{\text{test}}=1{,}154$.
+
+\paragraph{Vote entre voisins.}
+\begin{table}[H]\centering\small
+\begin{tabular}{lcc}
+\toprule
+Représentation & Pureté@10 & Précision éq.\ du pool après lissage\\
+\midrule
+aucun lissage & — & 0,8114\\
+\code{probs} & 0,755 & 0,8122\\
+\code{window} (statistiques de régime) & 0,297 & 0,8185\\
+\code{embedding} & 0,763 & 0,8215\\
+\code{combo} (régime $\oplus$ embeddings) & 0,756 & \textbf{0,8241}\\
+\bottomrule
+\end{tabular}
+\caption{Pool = valid $\cup$ stress. Les statistiques de régime regroupent mal les titres (pureté 0,30), mais elles complètent les embeddings. Meilleur réglage : \code{combo}, $k=10$, $\alpha=0{,}5$, 5 itérations, appliqué au test avec $k=40$.}
+\end{table}
+
+\begin{table}[H]\centering\small
+\begin{tabular}{lcc}
+\toprule
+Soumission V3 & Contenu & LB public\\
+\midrule
+A & \code{v3\_long} $\times3$ + \code{v3\_ema} $\times3$, $\gamma=1{,}154$, Sinkhorn & 0,6028\\
+B & A + vote entre voisins (\code{combo}, $k=40$) & \textbf{0,6351}\\
+\bottomrule
+\end{tabular}
+\end{table}
+\noindent C'est le deuxième plus gros gain du projet ($+3{,}2$ points), et le premier dont l'effet au LB \emph{dépasse} l'effet mesuré en interne ($+1{,}3$ sur le pool). L'explication proposée : le test contient les 20 fenêtres de chaque titre-jour, contre environ 5 dans le pool. Chaque fenêtre test dispose donc de bien plus de « sœurs » pour voter.

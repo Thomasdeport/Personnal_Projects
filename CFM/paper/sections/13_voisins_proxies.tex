@@ -1,6 +1,6 @@
 \section{Round 2 : voisins et indicateurs sans labels}\label{sec:voisins}
 
-Cette section décrit des outils implémentés en v0.2.0 mais \emph{pas encore exécutés sur les vraies données}. Les seuls chiffres réels sont ceux du test préliminaire de la section~\ref{sec:probaspace}.
+Ces outils ont été introduits en v0.2.0 (round 2), puis exécutés sur les vraies données en V3 : le vote entre voisins y fait passer le LB de $0{,}6028$ à $\mathbf{0{,}6351}$ (section~\ref{sec:v3}). Cette section décrit la méthode ; les résultats sont à la section~\ref{sec:resultats}.
 
 \subsection{Faire voter les fenêtres d'un même titre-jour}
 Le test contient environ 20 fenêtres par titre et par jour, et elles partagent l'effet $\eta_{c,d}$ de~\eqref{eq:hier}. Le mécanisme qui gonflait la validation aléatoire (reconnaître le jour) peut être retourné en notre faveur : si une représentation $z$ rapproche les fenêtres d'un même titre-jour, une fenêtre ambiguë peut être corrigée par ses voisines plus nettes.
