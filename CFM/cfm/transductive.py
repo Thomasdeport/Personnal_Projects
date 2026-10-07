@@ -15,7 +15,7 @@ Protocol:
 import numpy as np
 import pandas as pd
 import torch
-from .blend import find_teacher, sinkhorn_balance  # noqa: F401  (find_teacher re-exported)
+from .blend import sinkhorn_balance
 from .registry import window_matrix
 
 GROUPING_BLOCKS = ['levels', 'ticks', 'lots', 'cat_freq', 'position']

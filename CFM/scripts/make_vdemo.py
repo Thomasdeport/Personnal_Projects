@@ -401,12 +401,8 @@ Sur `valid ∪ stress`, l'effet du vote entre voisins est **sous-estimé** : le 
 
 # ------------------------------------------------------------------ data exploration
 TEACHER = """
-from cfm.blend import find_teacher
-try:
-    teacher = None if DEMO else find_teacher('B', REPO, lab.dir)   # teacher/, lab_v3 ou dataset lab_results_v3 attaché
-except FileNotFoundError as e:
-    teacher = None; print(e)
-if teacher is not None:
+teacher = REPO / 'teacher' / 'v3_B_probs.npz'
+if teacher.exists() and not DEMO:
     z = np.load(teacher); assert np.array_equal(z['obs_ids'], lab.test_ids)
     y_test_pred = z['p'].argmax(1); TEST_LABEL = 'test (titre prédit par V3 B, LB 0,635)'
 else:
