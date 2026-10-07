@@ -20,6 +20,8 @@ Rien dans ce repo n'a été exécuté sur les vraies données. Les tests et la d
 
 **Pour comprendre le projet rapidement :** le dossier [`v_demo/`](v_demo/README.md) contient deux notebooks complets. `CFM_demo_models` va des benchmarks (classiques, arbres, séquences) à la reconstruction du 0,507, puis à un modèle simple qui illustre chaque amélioration une par une. `CFM_demo_features` explore les données et les features.
 
+**V5 :** `CFM_V5.ipynb` (second tour d'auto-apprentissage avec V4 C comme professeur, quotas 60 % contre 40 %, figures de rapport dans `figures/v5/` ; environ 4 h à 4 h 30 de GPU, non mesuré). Il faut un dataset avec `v4_C_k40_probs.npz` et `v4_raw_probs.npz`, indiqué par `TEACHER_DIR`.
+
 **V4 :** `CFM_V4.ipynb` (réutilise `/kaggle/working/lab_v3` s'il existe ; environ 4 à 5 h de GPU, non mesuré) : pseudo-étiquetage à partir de V3 B, entraînement de 90 époques, variantes du vote entre voisins. Les fichiers `teacher/` doivent être présents dans le dataset Kaggle (`python scripts/kaggle_upload.py`).
 
 **V3 :** `CFM_V3.ipynb` (nouveau lab `/kaggle/working/lab_v3`, environ 4 à 5 h de GPU, non mesuré) joue sur tous les leviers : validation par grappes, EMA, profondeur, capacité, durée, ensemble 2×3, alignement de profondeur, vote entre voisins. DEMO exécutée : `notebooks/CFM_V3_DEMO_executed.ipynb`.

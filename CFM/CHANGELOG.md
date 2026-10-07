@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 — 2026-10-07 (V5)
+Après la V4 (LB **0,6551** pour C ; contrôle D sans élèves 0,6174 → les pseudo-labels apportent +3,8 pts).
+- `CFM_V5.ipynb` : second tour d'auto-apprentissage. Le professeur est V4 C. Élèves `v5_q60` ×3 et `v5_q40` ×3 : même professeur, une seule différence, le quota. Refit, alignement, voisins, puis soumissions ALL / E / F (k=40). Introduction complète (contexte, parcours, hypothèses H1/H2, protocole écrit d'avance, pronostic).
+- `cfm/report.py` : 13 figures de qualité rapport, en PNG 200 dpi et en PDF, avec un `index.md` des légendes. Elles couvrent :
+  - le parcours LB et le schéma de la boucle ;
+  - la sélection des pseudo-labels ;
+  - les courbes d'apprentissage et les graines ;
+  - la cascade des gains et la grille des voisins ;
+  - la calibration, le rappel par titre et les confusions regroupées ;
+  - les changements au test par rapport au professeur ;
+  - la carte t-SNE.
+- `teacher/v4_C_k40_probs.npz` (V4 C) et `teacher/v4_raw_probs.npz` (moyenne brute des 5 modèles V4, équilibrée) : non commités, à fournir via un dataset Kaggle (`TEACHER_DIR`).
+- DEMO exécutée en 4 min (CPU, synthétique) : toutes les figures sont produites.
+
 ## 0.5.0 — 2026-10-07 (v_demo)
 - Dossier **`v_demo/`** : deux notebooks complets, un seul « Run All » chacun, générés par `scripts/make_vdemo.py` et décrits dans `v_demo/README.md`.
   - `CFM_demo_models` : benchmark classique, arbres (familles de features une à une, LightGBM, CatBoost, importances, utilité/dérive, AUC adversariale), modèles séquentiels sur l'ancienne représentation, reconstruction simplifiée de l'hybride V2 (0,507), puis un petit CNN avec les améliorations ajoutées une par une (tokens ticks/lots, profondeur, durée, graines, Sinkhorn, voisins), et une synthèse de tous les modèles.
