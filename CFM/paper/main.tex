@@ -77,9 +77,9 @@
 \newcommand{\new}[1]{\textcolor{new}{#1}}
 
 \title{\textbf{Reconnaître un titre à partir de cent événements de carnet d'ordres}\\[4pt]
-\large Unités naturelles, tokens d'événements, SignatureNet\\et correction de prior transductive sous changement de période}
+\large Unités naturelles, tokens d'événements, SignatureNet,\\correction de prior et auto-apprentissage transductif sous changement de période}
 \author{Projet CFM — Thomas de Portzamparc\\\small rédigé avec l'assistance de Claude (Anthropic)}
-\date{6 octobre 2026 — code \code{CFM/} version 0.2.0}
+\date{8 octobre 2026 — code \code{CFM/} version 0.6.0}
 
 \begin{document}
 \maketitle
@@ -87,7 +87,7 @@
 \begin{abstract}
 \noindent On cherche à identifier lequel de $K=24$ titres a produit une fenêtre de $L=100$ événements consécutifs d'un carnet d'ordres agrégé, lorsque le test provient d'une période différente de celle de l'entraînement. Ce document décrit, équations à l'appui, le pipeline \emph{CFM Signature Lab} et le compare au pipeline précédent (Regime Lab V2, CFM Reaction R1/R2, V\_init).
 Trois idées le structurent : (i) réexprimer la donnée dans ses \emph{unités naturelles}, ticks et lots, plutôt qu'en multiples de médianes locales ; (ii) transformer chaque événement en un \emph{n-uplet de tokens discrets}, aux seuils fixés a priori, consommé par un encodeur convolutif et attentionnel (SignatureNet) ; (iii) sélectionner les modèles sur un protocole qui reconnaît que la validation aléatoire est biaisée par la dépendance intra-journalière, puis corriger le \emph{décalage de prior} induit par le changement de période grâce à un équilibrage de Sinkhorn.
-Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ après équilibrage, contre $0{,}5072$ pour le meilleur résultat antérieur. Trois itérations plus tard (augmentation de profondeur, entraînement plus long, alignement de profondeur et surtout vote entre voisins), le score atteint $\mathbf{0{,}6351}$. Nous montrons aussi les limites : la validation aléatoire surestime le score public de 28 points, l'apport des différentes briques n'est pas encore séparé causalement, et l'équilibrage est transductif.
+Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ après équilibrage, contre $0{,}5072$ pour le meilleur résultat antérieur. Trois itérations plus tard (augmentation de profondeur, entraînement plus long, alignement de profondeur et surtout vote entre voisins), le score atteint $0{,}6351$. Deux tours d'\emph{auto-apprentissage transductif} le portent ensuite à $0{,}6551$, puis $\mathbf{0{,}6835}$ : des élèves sont réentraînés sur les fenêtres test étiquetées par le modèle précédent, sous un filtre d'accord et un quota par titre. Une soumission de contrôle montre que ce gain revient entièrement aux pseudo-labels ($+3{,}8$ points), alors que l'entraînement long seul en perd. Nous montrons aussi les limites : la validation aléatoire surestime le score public de 28 points, les mesures internes des élèves sont contaminées par leur professeur, et toutes les briques de la seconde moitié du projet sont transductives.
 \end{abstract}
 
 \tableofcontents
@@ -108,6 +108,7 @@ Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ apr�
 \input{sections/12_ensemble_sinkhorn}
 \input{sections/13_voisins_proxies}
 \input{sections/14_resultats}
+\input{sections/14b_autoapprentissage}
 \input{sections/15_limites}
 \appendix
 \input{sections/A_annexes}
@@ -121,6 +122,10 @@ Le premier run atteint une accuracy publique de $0{,}5700$, puis $0{,}5958$ apr�
 \bibitem{shaw} P.~Shaw, J.~Uszkoreit, A.~Vaswani. \emph{Self-attention with relative position representations}. NAACL, 2018.
 \bibitem{loshchilov} I.~Loshchilov, F.~Hutter. \emph{Decoupled weight decay regularization}. ICLR, 2019.
 \bibitem{zhou} D.~Zhou, O.~Bousquet, T.~N.~Lal, J.~Weston, B.~Schölkopf. \emph{Learning with local and global consistency}. NIPS, 2003.
+\bibitem{lee} D.-H.~Lee. \emph{Pseudo-label: the simple and efficient semi-supervised learning method for deep neural networks}. ICML Workshop on Challenges in Representation Learning, 2013.
+\bibitem{xie} Q.~Xie, M.-T.~Luong, E.~Hovy, Q.~V.~Le. \emph{Self-training with Noisy Student improves ImageNet classification}. CVPR, 2020.
+\bibitem{arazo} E.~Arazo, D.~Ortego, P.~Albert, N.~E.~O'Connor, K.~McGuinness. \emph{Pseudo-labeling and confirmation bias in deep semi-supervised learning}. IJCNN, 2020.
+\bibitem{blum} A.~Blum, T.~Mitchell. \emph{Combining labeled and unlabeled data with co-training}. COLT, 1998.
 \bibitem{lipton} Z.~Lipton, Y.-X.~Wang, A.~Smola. \emph{Detecting and correcting for label shift with black box predictors}. ICML, 2018.
 \end{thebibliography}
 \end{document}

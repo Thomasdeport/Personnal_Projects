@@ -21,17 +21,18 @@ Encodeur & BiGRU 48 (R2) ou Transformer hybride (V2) & Convolutions dilatées + 
 Features de fenêtre & Moyennes et écarts-types de canaux relatifs & 11 blocs nommés, cachés et versionnés ($\sim$200 colonnes), passés par un \new{entonnoir de screening}\\
 Stress & Queue \old{haute} de profondeur, codée en dur & Queue orientée \new{vers le test} (basse), choix consigné\\
 Sélection & Validation aléatoire & Stress équilibré ; la validation aléatoire est jugée non prédictive (écart de 28 points)\\
-Sortie & $\arg\max$ des probabilités & Moyenne de 4 modèles, puis \new{équilibrage de Sinkhorn} (transductif)\\
+Sortie & $\arg\max$ des probabilités & Moyenne de modèles, \new{équilibrage de Sinkhorn}, \new{vote entre voisins} (transductifs)\\
+Période test & Ignorée & \new{Auto-apprentissage} : élèves réentraînés sur les fenêtres test pseudo-étiquetées, deux tours\\
 \midrule
-Score public & $0{,}5072$ & $0{,}5700$ (brut), $0{,}5958$ (équilibré), $\mathbf{0{,}6351}$ (V3, avec vote entre voisins)\\
+Score public & $0{,}5072$ & $0{,}5700$ (brut), $0{,}5958$ (équilibré), $0{,}6351$ (V3, voisins), $0{,}6551$ (V4), $\mathbf{0{,}6835}$ (V5)\\
 \bottomrule
 \end{tabularx}
 \caption{Les différences essentielles.}\label{tab:resume}
 \end{table}
 
 \begin{figure}[H]
-\centering\includegraphics[width=.8\linewidth]{figures/lb_progression.png}
-\caption{Accuracy publique. Le meilleur classement est celui rapporté par l'auteur à la date de sa consultation. Ce n'est pas une valeur vérifiée ici.}
+\centering\includegraphics[width=\linewidth]{figures/v5_lb_journey.pdf}
+\caption{Accuracy publique, soumission par soumission, avec le levier ajouté à chaque étape. La croix rouge est une soumission de contrôle (V4~D : V4~C sans les élèves). Section~\ref{sec:selftrain} pour V4 et V5.}
 \label{fig:lb}
 \end{figure}
 
@@ -43,5 +44,6 @@ Score public & $0{,}5072$ & $0{,}5700$ (brut), $0{,}5958$ (équilibré), $\mathb
 \item Un entonnoir de screening : utilité contre dérive, AUC adversariale, ajout et retrait réentraînés, intervalles appariés (section~\ref{sec:screening}).
 \item SignatureNet, décrit équation par équation, avec un décompte exact de ses paramètres (section~\ref{sec:signaturenet}).
 \item La correction de prior par Sinkhorn : dérivation, convergence, conditions de validité, effet observé (section~\ref{sec:sinkhorn}).
+\item L'auto-apprentissage transductif : filtre d'accord entre deux lectures du professeur, quota équilibré par titre, deux tours, soumissions de contrôle et analyse de la contamination des mesures internes (section~\ref{sec:selftrain}).
 \end{enumerate}
-\noindent Ce que ce document \emph{ne} prétend \emph{pas}. Les $+6{,}3$ points du premier run mêlent représentation, architecture et ensemble : un seul score public ne permet pas de les séparer. Les gains de validation ne sont pas des gains de test. L'équilibrage suppose un test équilibré entre titres et utilise les entrées du test : sa conformité au règlement est à vérifier. Enfin, les résultats synthétiques cités en annexe valident le logiciel, jamais la performance.
+\noindent Ce que ce document \emph{ne} prétend \emph{pas}. Les $+6{,}3$ points du premier run mêlent représentation, architecture et ensemble : un seul score public ne permet pas de les séparer. Les gains de validation ne sont pas des gains de test. L'équilibrage suppose un test équilibré entre titres et utilise les entrées du test, comme le vote entre voisins et l'auto-apprentissage : leur conformité au règlement est à vérifier. Les mesures internes des élèves V4/V5 sont contaminées par leur professeur : seul le LB y tranche. Enfin, les résultats synthétiques cités en annexe valident le logiciel, jamais la performance.

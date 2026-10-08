@@ -6,7 +6,9 @@
 \item \textbf{Validation non représentative.} Faute de dates, aucune partition ne tient des jours entiers à l'écart. Toutes les mesures internes sont optimistes. Les intervalles bootstrap sous-estiment la variance d'un facteur $\sqrt{\mathrm{deff}}$ inconnu.
 \item \textbf{Leaderboard public.} Il est mesuré sur une partie du test, inconnue ici. Le consulter trop souvent ferait sur-apprendre ce sous-ensemble : \code{LEADERBOARD.md} limite et documente les soumissions.
 \item \textbf{Hypothèse du prix.} « Prix plus élevés dans la période test » relie trois observations (profondeur, odd lots, lots ronds), mais le niveau de prix n'est pas observé.
-\item \textbf{Transductivité.} Le sens du stress, l'équilibrage et le lissage par voisins utilisent les entrées test. Il faut vérifier que le règlement l'autorise. Dans le cas contraire, la soumission de référence est 0,5700.
+\item \textbf{Transductivité.} Le sens du stress, l'équilibrage, le lissage par voisins et l'auto-apprentissage utilisent les entrées test. Il faut vérifier que le règlement l'autorise. Dans le cas contraire, la soumission de référence est 0,5700.
+\item \textbf{Contamination des élèves.} Le professeur est refit sur valid et stress : les scores internes des élèves V4/V5 en héritent (section~\ref{sec:contam}). L'effet du quota (H2) n'est pas établi : le +1 point de q60 sur q40 peut en venir entièrement, et la soumission F n'a pas été faite.
+\item \textbf{Biais de confirmation.} La confiance des élèves au test se concentre au-dessus de 0,9 (figure~\ref{fig:testchg}). Le LB a progressé, mais rien ne garantit qu'un tour supplémentaire ne fasse pas l'inverse.
 \end{enumerate}
 
 \subsection{Prochaines expériences}
@@ -15,15 +17,18 @@
 \toprule
 Expérience & Hypothèse & Abandon si\\
 \midrule
-V4 : pseudo-étiquetage & apprendre sur des fenêtres test étiquetées par V3 B (accord lissé/brut, quota par titre) adapte le modèle à la période & C\_k40 $\le$ D\_k40 au LB\\
-V4 : 90 époques & l'entraînement n'était pas saturé à 60 & gain inférieur à l'écart entre graines\\
-V4 : $k$ au test & $k=40$ n'est pas optimal & variantes à $\pm0{,}3$ pt de B\\
+Soumettre V5 F & le quota de 60\,\% aide hors contamination (H2) & F $\ge$ E au LB\\
+Tour 3 (professeur V5 ALL) & l'auto-apprentissage n'a pas atteint son plateau & LB $\le 0{,}6835$ : on arrête la boucle\\
+Professeur dev, pas refit & supprimer la contamination rend les mesures internes à nouveau lisibles & écart interne/LB inchangé\\
 Token $D^{\text{pré}}_t$ (§\ref{sec:dpost}) & distinguer « où était l'ordre » de « ce qu'il a fait au carnet » & stress équilibré inchangé\\
 SignatureLite & 3 convolutions + pooling (≈ 100\,k paramètres) suffisent, sans attention & écart > 0,5 pt vs \code{v3\_long}\\
-Regroupement explicite en jours & voter par paquet de 20 fenêtres plutôt que par $k$ voisins & pas de gain sur B\\
+Regroupement explicite en jours & voter par paquet de 20 fenêtres plutôt que par $k$ voisins & pas de gain sur le meilleur LB\\
 \bottomrule
 \end{tabularx}
 \end{center}
+\noindent Expériences déjà tranchées : pseudo-étiquetage (V4 : +3,8 points contre le contrôle D), 90 époques (gain interne qui ne transfère pas), variantes de $k$ au test (moins de 2\,\% des prédictions changent : non soumises).
 
 \subsection{Conclusion}
 Le gain le plus robuste de ce travail ne vient pas d'une couche de réseau. Il vient de trois décisions. D'abord, \emph{regarder} la donnée dans ses propres unités, ce qui a fait apparaître le régime de tick comme signature stable. Ensuite, \emph{refuser} de croire la validation aléatoire. Enfin, \emph{diagnostiquer le test sans labels} avant de le soumettre. L'équilibrage de Sinkhorn n'est qu'une conséquence de ce diagnostic : une projection entropique de deux lignes, dont la justification tient en une formule de Bayes.
+
+La seconde moitié du projet a poussé la même logique un cran plus loin. Puisque le test vient d'une autre période, on peut \emph{en apprendre} sans ses labels : d'abord en faisant voter les fenêtres d'un même titre-jour, puis en réentraînant le modèle sur ses propres prédictions les plus sûres, filtrées et équilibrées. Ces deux idées valent ensemble environ 8 points (3,2 pour les voisins, 2,0 puis 2,8 pour les deux tours). Elles ont un prix méthodologique, que ce document assume : les mesures internes ne suffisent plus à les évaluer, et seules des soumissions de contrôle, qui ne diffèrent que d'un élément, permettent de les défendre.
