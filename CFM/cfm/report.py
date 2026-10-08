@@ -63,7 +63,7 @@ def lb_journey(rows, name='v5_lb_journey'):
     ax.set_xticks(x, main.label, rotation=0, fontsize=8)
     ax.set_ylabel('Précision publique (LB)'); ax.set_xlim(-.5, len(main) - .2)
     ax.set_ylim(main.lb.min() - .045, main.lb.max() + .02)
-    ax.set_title('Du record historique à la V4 : chaque soumission répond à une question')
+    ax.set_title(f'Du record historique à {main.label.iloc[-1]} : chaque soumission répond à une question')
     return save(fig, name, "Progression du score public, soumission par soumission, avec le levier ajouté à chaque "
                            "étape. Croix rouges : soumissions de contrôle (une seule différence).")
 
