@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1 — 2026-10-08 (papier : atlas et démonstration)
+- Papier, 61 pages. Section 5, **atlas des données** : 14 figures réelles (fenêtres, tokens, ticks, lots, profondeur, dérive, vie des ordres). Section 17, **démonstration contrôlée** : 25 modèles sur un même protocole. L'échelle du CNN simple isole la représentation : **+16 points** à architecture égale (0,449 → 0,609), puis 0,701 avec toutes les étapes.
+- `v_demo/figures/` : les figures clés des deux notebooks, avec un index.
+- `make_vdemo.py` : correction de l'empreinte de tokens (colonnes constantes entre titres → NaN).
+
 ## 0.6.0 — 2026-10-07 (V5)
 Après la V4 (LB **0,6551** pour C ; contrôle D sans élèves 0,6174 → les pseudo-labels apportent +3,8 pts).
 - `CFM_V5.ipynb` : second tour d'auto-apprentissage. Le professeur est V4 C. Élèves `v5_q60` ×3 et `v5_q40` ×3 : même professeur, une seule différence, le quota. Refit, alignement, voisins, puis soumissions ALL / E / F (k=40). Introduction complète (contexte, parcours, hypothèses H1/H2, protocole écrit d'avance, pronostic).

@@ -1,5 +1,7 @@
 # v_demo — le projet en deux notebooks
 
+**Résultats réels :** les figures clés sont dans [`figures/`](figures/README.md), commentées dans le papier (sections 5 et 17).
+
 Deux notebooks, un seul « Run All » chacun, avec un protocole identique partout. Chaque modèle s'entraîne en moins de 20 min sur GPU.
 
 ## `CFM_demo_models.ipynb` — tous les modèles (≈ 1 h à 1 h 20 sur GPU, non mesuré)
