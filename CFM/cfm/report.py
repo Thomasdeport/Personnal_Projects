@@ -85,7 +85,7 @@ def self_training_diagram(name='v5_self_training_loop'):
         if text:
             ax.text((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + dy, text, ha='center', fontsize=7, color=MUTED)
 
-    box(.1, 2.55, 2.1, 1.4, 'Train étiqueté', '242 400 fenêtres\n24 titres\npériode d\'entraînement', C['v3'])
+    box(.1, 2.55, 2.1, 1.4, 'Train étiqueté', '160 800 fenêtres\n24 titres\npériode d\'entraînement', C['v3'])
     box(.1, .45, 2.1, 1.4, 'Test non étiqueté', '81 600 fenêtres\nautre période\n(20 fenêtres / titre-jour)', C['v3'])
     box(2.9, 1.25, 2.3, 1.85, 'Professeur', 'ensemble refit\n+ alignement profondeur\n+ Sinkhorn\n+ vote entre voisins',
         C['teacher'])
