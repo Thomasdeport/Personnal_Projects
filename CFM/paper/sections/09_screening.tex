@@ -1,6 +1,10 @@
 \section{L'entonnoir de screening}\label{sec:screening}
 
-Tester une feature en réentraînant un réseau coûte environ 10 minutes de GPU. L'entonnoir (\code{cfm/screen.py}) commence par des tests en secondes et ne réserve le réentraînement qu'aux blocs qui ont passé les étapes précédentes.
+Tester une feature en réentraînant un réseau coûte environ 10 minutes de GPU. L'entonnoir (\code{cfm/screen.py}) commence par des tests en secondes et ne réserve le réentraînement qu'aux blocs qui ont passé les étapes précédentes. La figure~\ref{fig:funnel} le résume avec les valeurs réelles du run 1 ; les figures de cette section en détaillent chaque étape.
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth]{figures/scr_funnel.pdf}
+\caption{L'entonnoir en quatre étapes, du moins cher au plus cher. Les deux premières étapes ne réentraînent rien : elles mesurent et localisent. Seules les deux dernières décident, en comparant des modèles réentraînés sur les mêmes fenêtres.}
+\label{fig:funnel}\end{figure}
 
 \subsection{Étape 1 : utilité contre dérive, colonne par colonne}
 \paragraph{Utilité : rapport de corrélation $\eta^2$.} Pour une colonne $x$ sur le fit (sous-échantillon stratifié de $60\,000$ fenêtres), avec $\bar x$ la moyenne globale et $\bar x_c$ la moyenne de la classe $c$ :
@@ -18,12 +22,20 @@ C'est la part de variance expliquée par le titre : $1$ si chaque titre a une va
 
 \paragraph{Lecture de la carte $(\mathrm{KS},\eta^2)$.} En haut à gauche : utile et stable, on garde. En haut à droite : utile mais sensible au régime ; on garde et on rend robuste. En bas : inutile seul ; seul le réentraînement tranche.
 
+\begin{figure}[H]\centering\includegraphics[width=.86\linewidth]{figures/scr_univariate.pdf}
+\caption{Étape 1 sur les 197 colonnes du run 1. Les colonnes de tick (vert) occupent seules le quadrant idéal : $\eta^2\approx0{,}5$ pour une dérive $\mathrm{KS}\approx0{,}02$. Les colonnes de profondeur (rouge) sont encore plus séparatrices, mais aussi les plus décalées : c'est le piège que l'étape 3 confirme. La majorité des colonnes sont peu utiles seules, ce qui ne dit rien de leur apport combiné.}
+\label{fig:scr-uni}\end{figure}
+
 \subsection{Étape 2 : AUC adversariale par bloc}
 Pour un bloc $\mathcal{B}$, on tire $30\,000$ fenêtres du train (étiquette 0) et $30\,000$ du test (étiquette 1). On entraîne un XGBoost à 200 arbres, et l'on calcule l'AUC des prédictions hors pli (3 plis) :
 \begin{equation}
 \mathrm{AUC}(\mathcal{B})=\Pr\big(\hat s(x_{\text{te}})>\hat s(x_{\text{tr}})\big).
 \end{equation}
 $0{,}5$ : indiscernable ; $1$ : parfaitement séparable. Une AUC élevée \emph{localise} le décalage. Elle n'impose pas de supprimer le bloc : un bloc décalé peut rester l'information la plus utile.
+
+\begin{figure}[H]\centering\includegraphics[width=.78\linewidth]{figures/scr_adversarial.pdf}
+\caption{Étape 2 : chaque bloc placé selon son décalage (AUC adversariale) et son utilité (taille du point = nombre de colonnes). Les blocs s'étalent de 0,57 (\code{ticks}) à 0,73 (\code{base\_relative}, les résumés de l'ancien pipeline), mais tous ensemble atteignent 0,863 : le décalage est diffus, réparti entre de nombreuses colonnes. Fait notable, les résumés relatifs, pensés pour être invariants à l'échelle, sont les \emph{plus} décalés.}
+\label{fig:scr-adv}\end{figure}
 
 \subsection{Étape 3 : ajout réentraîné (forward)}
 Soit une base $\mathcal{B}_0$ (\code{base\_relative} + \code{cat\_freq}, l'approximation des résumés précédents). Pour chaque candidat $\mathcal{B}$, on entraîne \emph{le même} modèle, avec les mêmes fenêtres d'entraînement et la même graine, sur $\mathcal{B}_0$ puis sur $\mathcal{B}_0\cup\mathcal{B}$. On évalue ensuite sur les \emph{mêmes} fenêtres de valid et de stress. Avec $C_i^{0},C_i^{1}\in\{0,1\}$ les indicatrices de réussite sur la fenêtre $i$ :
@@ -39,6 +51,12 @@ et l'intervalle à 95\,\% est $[\hat\Delta^{*}_{(2{,}5\,\%)},\hat\Delta^{*}_{(97
 
 \subsection{Étape 4 : retrait réentraîné (ablation)}
 Sur l'ensemble retenu $\mathcal{S}$, on compare $\mathcal{S}$ et $\mathcal{S}\setminus\{\mathcal{B}\}$, de la même façon appariée. Un retrait qui ne coûte rien signale un bloc redondant avec les autres. Un masquage à l'inférence, au contraire, ne serait qu'un test de \emph{sensibilité} : il ne dit pas ce qu'un modèle entraîné sans le bloc aurait appris à la place.
+
+\begin{figure}[H]\centering\includegraphics[width=\linewidth]{figures/scr_forward_ablation.pdf}
+\caption{Étapes 3 et 4 au run 1 (XGBoost, 50\,\% du fit, intervalles bootstrap appariés à 95\,\%). À gauche, l'ajout : huit blocs améliorent la validation \emph{et} le stress. \code{levels} est le seul à violer la règle : +5,4 points en validation, $-13{,}3$ en stress. À droite, le retrait sur les 10 blocs retenus : \code{lots}, \code{base\_relative} et \code{ticks} coûtent le plus cher. \code{cat\_cross}, \code{cat\_freq} et \code{tokens\_bow} (≈) ont un intervalle qui contient 0 : ils sont redondants une fois les autres présents.}
+\label{fig:scr-fa}\end{figure}
+
+\paragraph{Ce que l'entonnoir a décidé, et ce qu'il a appris au réseau.} Pour les modèles d'arbres, le bloc \code{levels} est exclu. Le réseau, lui, garde les tailles absolues : le retrait coûte 4,3 points de stress à SignatureNet (section~\ref{sec:resultats}), car un réseau qui lit la séquence peut combiner la profondeur avec d'autres signaux sans en dépendre autant. Mais le diagnostic de l'entonnoir (la profondeur est séparatrice \emph{et} décalée) a directement motivé l'augmentation et l'alignement de profondeur (section~\ref{sec:aug}). L'entonnoir sert donc moins à choisir des colonnes qu'à \emph{comprendre} où se trouve le changement de période.
 
 \subsection{Sélection gloutonne}
 \code{greedy} ajoute à chaque pas le meilleur candidat, tant que $\hat\Delta\ge0{,}002$ et que la borne basse est positive. La validation devient alors un score de \emph{sélection} : l'ensemble obtenu doit être reconfirmé sur le stress et sur une autre graine.

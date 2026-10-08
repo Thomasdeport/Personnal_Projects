@@ -1,5 +1,7 @@
 # v_demo — le projet en deux notebooks
 
+**Pour comprendre les transformations en 20 secondes :** `CFM_brouillon_transformations.ipynb` applique chaque étape du papier à un marché jouet inventé (aucune donnée, CPU).
+
 **Résultats réels :** les figures clés sont dans [`figures/`](figures/README.md), commentées dans le papier (sections 5 et 17).
 
 Deux notebooks, un seul « Run All » chacun, avec un protocole identique partout. Chaque modèle s'entraîne en moins de 20 min sur GPU.

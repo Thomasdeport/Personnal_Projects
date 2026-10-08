@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.3 — 2026-10-08 (papier : entonnoir illustré, mises à jour)
+- Section 11 (entonnoir) : 4 figures construites sur les vraies tables du run 1. Elles montrent le schéma de l'entonnoir, la carte utilité/dérive des 197 colonnes avec ses quadrants, la carte bloc par bloc (AUC adversariale contre utilité) et l'ajout/retrait réentraîné avec intervalles bootstrap.
+- Mises à jour du papier :
+  - biais « même ordre » retiré de tous les modèles soumis ;
+  - nouveau tableau des configurations successives jusqu'à V5 ;
+  - modèles tabulaires présentés comme outil de diagnostic ;
+  - remarque sur ce que le vote entre voisins suppose (hypothèse « même jour ») ;
+  - hyperparamètres V3–V5 ;
+  - 18 contrats testés.
+- Mention d'assistance retirée de la page de titre.
+- `v_demo/CFM_brouillon_transformations.ipynb` : chaque transformation du papier sur un marché jouet (4 titres, 8 jours), sans données, en environ 20 s. Il couvre ticks/lots, rang des ordres, tokens, piège du régime, validation aléatoire contre par jour, augmentation de profondeur, Sinkhorn, voisins et pseudo-labels.
+
 ## 0.6.2 — 2026-10-08 (papier : nouvelle référence « avant »)
 - La référence de comparaison devient le **pipeline d'octobre 2025** (Transformer + BiLSTM, ≈ 0,8 M paramètres) : 0,869 en validation dès l'époque 2, mais ≈ 0,50 au LB.
 - Section 3 réécrite : schéma avant/maintenant, puis « Le vrai problème : 0,87 en validation, 0,50 au test ». Elle détaille sept causes (validation aléatoire par jour, sélection sur cette validation, features de régime, normalisation figée, filtrage des extrêmes, `order_id` numérique, pseudo-labels par seuil) et relie chacune à son correctif et à son effet mesuré.

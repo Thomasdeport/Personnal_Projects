@@ -23,8 +23,7 @@ Feature & $\eta^2$ (fit) & KS train/test & shift (sd)\\
 \caption{Les dix colonnes les plus séparatrices. En vert : les colonnes de tick, à la fois séparatrices et stables.}
 \end{table}
 
-\begin{figure}[H]\centering\includegraphics[width=.8\linewidth]{figures/screen_map.png}
-\caption{Carte utilité/dérive des 197 colonnes.}\end{figure}
+\noindent La carte complète des 197 colonnes est la figure~\ref{fig:scr-uni}.
 
 \paragraph{Trois enseignements.}
 \begin{enumerate}
@@ -72,7 +71,7 @@ Base \code{base\_relative}+\code{cat\_freq} : valid 0,313, stress 0,245 (XGBoost
 \caption{En points d'accuracy. \code{levels} est le seul bloc écarté par la règle : il fait gagner 5,4 points en validation et en perdre 13,3 en stress. C'est un piège de régime.}
 \end{table}
 
-\begin{figure}[H]\centering\includegraphics[width=.75\linewidth]{figures/screen_forward.png}\caption{Ajout réentraîné, valid et stress.}\end{figure}
+\noindent Les intervalles de cet ajout et du retrait ci-dessous sont tracés à la figure~\ref{fig:scr-fa}.
 
 \subsection{Retrait réentraîné}
 Sur les 10 blocs retenus (190 colonnes) : valid 0,465, stress 0,364.

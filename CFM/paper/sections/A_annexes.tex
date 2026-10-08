@@ -32,7 +32,10 @@ $A,\alpha,k$ & graphe des voisins, poids de propagation, nombre de voisins\\
 Split & audit 10\,\%, stress 10\,\% (queue \code{auto}), valid 15\,\%, seed 42\\
 Screening & XGBoost, base \code{base\_relative}+\code{cat\_freq}, 50\,\% du fit, seed 0\\
 SignatureNet & $d=96$, $H=4$, 2 conv, 2 attentions, contexte 64, dropout 0,15\\
-Entraînement & lot de 512, AdamW $10^{-3}$, wd 0,01, warmup 1 époque, cosinus, 40 époques, patience 8\\
+Entraînement & lot de 512, AdamW $10^{-3}$, wd 0,01, warmup 1 époque, cosinus ; 40 époques et patience 8 (run 1), 60 et 12 (V3+)\\
+EMA (\code{v3\_ema}) & décroissance 0,999\\
+Pseudo-labels & poids 0,5 ; quota 40\,\% (V4) puis 40 et 60\,\% (V5) ; filtre d'accord brut/lissé\\
+Validation par grappes & k-means par titre, 40 grappes, blocs \code{levels}, \code{lots}, \code{ticks}, \code{cat\_freq}\\
 Perte & entropie croisée, lissage 0,02, écrêtage du gradient 1\\
 Augmentations (robust) & venue 0,1 ; blocs 0,1 ; jitter de niveaux 0,25\\
 Augmentation (depthaug) & $\sigma_d=0{,}3$\\
@@ -43,7 +46,7 @@ Voisins & $k\in\{3,5,10,20\}$, $\alpha\in\{0{,}3;0{,}5;0{,}8\}$, 1 ou 5 itérati
 \end{tabular}
 \end{center}
 
-\section{Contrats testés (\code{tests/test\_lab.py}, 15 tests)}
+\section{Contrats testés (\code{tests/test\_lab.py}, 18 tests)}
 \begin{enumerate}
 \item labels alignés par \code{obs\_id} même si \code{y\_train} est mélangé ;
 \item fenêtres non contiguës refusées ;
@@ -59,15 +62,19 @@ Voisins & $k\in\{3,5,10,20\}$, $\alpha\in\{0{,}3;0{,}5;0{,}8\}$, 1 ou 5 itérati
 \item la mise à l'échelle ne touche que les canaux de profondeur et conserve $q^b/q^a$ ;
 \item le lissage par voisins corrige des erreurs isolées ; le voisinage exclut la fenêtre elle-même ;
 \item les indicateurs sans labels sont nuls sur des prédictions équilibrées ;
-\item Sinkhorn : lignes de somme 1, colonnes de somme $N/K$.
+\item Sinkhorn : lignes de somme 1, colonnes de somme $N/K$ ;
+\item EMA : évaluation sur les poids moyennés, reprise exacte après interruption ;
+\item alignement de profondeur : $\gamma=1$ redonne exactement les prédictions sauvegardées ; split par grappes disjoint et complet ;
+\item pseudo-labels : les fenêtres test sélectionnées sont réellement entraînées, un fichier modifié est refusé (empreinte).
 \end{enumerate}
 
 \section{Reproduire}
 \begin{verbatim}
 pip install -r requirements.txt
 python scripts/kaggle_upload.py --notes "..."      # code -> Dataset Kaggle privé
-# Kaggle : CFM_Signature_Lab.ipynb (round 1) puis CFM_Round2.ipynb
-python tests/test_lab.py                            # 15 contrats, CPU
+# Kaggle : CFM_Signature_Lab.ipynb (round 1), CFM_Round2, CFM_V3, CFM_V4, CFM_V5
+# démonstration : v_demo/CFM_demo_models.ipynb, v_demo/CFM_demo_features.ipynb
+python tests/test_lab.py                            # 18 contrats, CPU
 python -m cfm neural --config configs/signature.json --name sig_s0 --refit epochs
 python -m cfm blend --runs sig_s0 sig_s1 --submit --balance
 \end{verbatim}

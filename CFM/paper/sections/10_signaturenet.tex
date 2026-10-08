@@ -70,7 +70,7 @@ $\beta_h\in\R$ est \emph{appris}, et initialisé à 0.
 pousse $\beta_h$ vers des valeurs positives : l'événement $i$ porte alors plus d'attention aux autres événements de son ordre.
 \item $\beta_h<0$ correspond au cas inverse : la tête apprend à regarder \emph{ailleurs} que l'ordre courant.
 \end{itemize}
-Le biais n'utilise que $S$, donc que des égalités d'identifiants (Proposition~\ref{prop:bij}). C'est une forme particulière de biais relationnel appris, dans l'esprit des représentations relatives de \cite{shaw}. La variante \code{signature\_no\_bias} retire $\beta$. Au run 1, cette suppression ne change rien de mesurable (section~\ref{sec:resultats}).
+Le biais n'utilise que $S$, donc que des égalités d'identifiants (Proposition~\ref{prop:bij}). C'est une forme particulière de biais relationnel appris, dans l'esprit des représentations relatives de \cite{shaw}. La variante \code{signature\_no\_bias} retire $\beta$. Au run 1, cette suppression ne change rien de mesurable (0,8251 avec, 0,8238 sans, un écart inférieur à celui entre deux graines ; section~\ref{sec:resultats}). \textbf{Toutes les configurations à partir du round 2} (\code{sig2\_depthaug}, \code{v3\_*}, \code{v4\_*}, \code{v5\_*}) en dérivent : les modèles soumis utilisent une attention standard, et SignatureNet y compte 342\,905 paramètres. La démonstration de la section~\ref{sec:demo} va plus loin : un CNN sans attention d'environ 100\,k paramètres, avec les mêmes entrées, fait presque aussi bien. L'architecture compte moins que les entrées.
 
 \subsection{Pooling}
 Avec $x\in\R^{L\times d}$ en sortie d'encodeur :

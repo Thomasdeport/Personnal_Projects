@@ -21,7 +21,7 @@ $A$ est stochastique par lignes, donc $\|A\|_\infty=1$ et $\|\alpha A\|_\infty<1
 
 \paragraph{Trois représentations.}
 \begin{itemize}
-\item \code{window} : blocs \code{levels}, \code{ticks}, \code{lots}, \code{cat\_freq} et \code{position}, standardisés à l'intérieur de l'ensemble. Ce sont justement des statistiques de régime : leur dérive nuit à la classification, mais elles identifient bien le jour.
+\item \code{window} : blocs \code{levels}, \code{ticks}, \code{lots}, \code{cat\_freq} et \code{position}, standardisés à l'intérieur de l'ensemble. Ce sont justement des statistiques de régime : leur dérive nuit à la classification, mais elles rapprochent des fenêtres prises dans un même régime de marché. Qu'il s'agisse du même \emph{jour} est une hypothèse : sans dates, elle n'est pas vérifiable directement (voir la remarque ci-dessous).
 \item \code{embedding} : $[z_{\text{seq}}\|z_{\text{ctx}}]$ des modèles, normalisé puis moyenné entre les membres. Les modèles de développement servent pour valid/stress, ceux du refit pour le test. Le code refuse d'utiliser les poids du refit sur des partitions étiquetées.
 \item \code{probs} : $\sqrt{P}$, soit une distance de Hellinger.
 \end{itemize}
@@ -30,6 +30,10 @@ $A$ est stochastique par lignes, donc $\|A\|_\infty=1$ et $\|\alpha A\|_\infty<1
 \begin{equation}
 \text{pureté}@k=\frac1{nk}\sum_i\sum_{j\in\mathcal{N}_k(i)}\ind{y_j=y_i}.
 \end{equation}
+
+\begin{remarque}[Ce que le vote suppose, et ce qu'il ne suppose pas]
+Le vote n'a pas besoin que les voisins soient du même jour. Il lui suffit qu'ils soient \emph{plus souvent du bon titre} que la fenêtre n'est sûre d'elle : la pureté@10 de la représentation \code{combo} vaut 0,756, et la moyenne des probabilités de voisins majoritairement du bon titre réduit le bruit. Ce gain est mesuré avec des labels sur le pool. L'hypothèse « même jour » sert seulement à \emph{expliquer} pourquoi le gain est plus grand au test (+3,2 points) qu'en interne (+1,3). Trois indices la soutiennent sans la prouver : l'écart de 28 points de la validation aléatoire, l'utilité de statistiques de régime dont la pureté de titre n'est que de 0,30, et la densité quatre fois plus forte de fenêtres sœurs au test. Le fait que le meilleur $k$ du pool (10) dépasse le nombre de sœurs par titre-jour (environ 5) montre d'ailleurs que les voisins utiles incluent aussi des fenêtres du même titre prises d'autres jours au régime proche.
+\end{remarque}
 
 \paragraph{Densité et facteur $k$.} Le pool d'évaluation valid $\cup$ stress contient $25\,\%$ des fenêtres de chaque jour, soit environ 5 par titre-jour, alors que le test en contient 20. Le $k$ choisi sur le pool est donc multiplié par $4$ pour le test. C'est une \emph{hypothèse}, écrite dans le code (\code{k\_scale}).
 
