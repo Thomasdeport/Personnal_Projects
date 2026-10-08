@@ -5,6 +5,7 @@ lab/
 *.npy
 *.npz
 *.pt
+scripts/
 __pycache__/
 submission*.csv
 lab_results.zip
