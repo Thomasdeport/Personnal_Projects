@@ -6,25 +6,26 @@ Une fenêtre est une suite de cent événements de carnet : ajouts, mises à jou
 Un bon classifieur doit donc reconnaître ce qui fait la \emph{signature} d'un titre : sa grille de prix (le tick), ses conventions de quantité (les lots), la façon dont ses ordres vivent et meurent. Il doit le faire sans s'appuyer sur ce qui ne caractérise qu'un \emph{régime} passager, comme une profondeur particulière à une période donnée.
 
 \subsection{Ce qui a changé, en une page}
-Le tableau~\ref{tab:resume} résume les différences entre le pipeline précédent et le pipeline présenté ici. La section~\ref{sec:avantapres} les détaille avec deux schémas complets.
+Le point de départ est le pipeline d'octobre 2025 : un Transformer--BiLSTM qui atteignait \textbf{0,869 en validation} mais seulement \textbf{environ 0,50 au test}. Cet écart, plus que le niveau du modèle, était le vrai problème, et la section~\ref{sec:diagnostic} en dissèque les causes. Le tableau~\ref{tab:resume} résume les différences, et la section~\ref{sec:avantapres} les détaille avec deux schémas complets.
 
 \begin{table}[H]
 \centering\small
 \begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{2.7cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
 \toprule
-& \textbf{Avant} (V2, Reaction R1/R2, V\_init) & \textbf{Maintenant} (Signature Lab)\\
+& \textbf{Avant} (pipeline d'octobre 2025) & \textbf{Maintenant} (Signature Lab)\\
 \midrule
-Unités & Prix et tailles divisés par des médianes \emph{locales} à la fenêtre & \new{Ticks} pour les prix, \new{lots} pour les quantités : des entiers, communs à toutes les fenêtres d'un titre\\
-Événement & Vecteur de 13 à 19 réels standardisés + one-hot & \new{11 tokens discrets} (seuils fixés a priori) + 11 canaux continus\\
-Ordres & Répétition, écart depuis l'occurrence précédente & Rang de première apparition, occurrence, action précédente \emph{du même ordre}, première action ; relation « même ordre » dans l'attention\\
-Encodeur & BiGRU 48 (R2) ou Transformer hybride (V2) & Convolutions dilatées + attention relationnelle + pooling attention/moyenne/max\\
-Features de fenêtre & Moyennes et écarts-types de canaux relatifs & 11 blocs nommés, cachés et versionnés ($\sim$200 colonnes), passés par un \new{entonnoir de screening}\\
-Stress & Queue \old{haute} de profondeur, codée en dur & Queue orientée \new{vers le test} (basse), choix consigné\\
-Sélection & Validation aléatoire & Stress équilibré ; la validation aléatoire est jugée non prédictive (écart de 28 points)\\
-Sortie & $\arg\max$ des probabilités & Moyenne de modèles, \new{équilibrage de Sinkhorn}, \new{vote entre voisins} (transductifs)\\
+Unités & Spread en unités de prix brutes, spread relatif, momentum, volatilité : des grandeurs de \emph{régime} & \new{Ticks} pour les prix, \new{lots} pour les quantités : des entiers, communs à toutes les fenêtres d'un titre\\
+Événement & 16 colonnes : 4 catégories en embeddings, 11 réels normalisés sur le train & \new{11 tokens discrets} (seuils fixés a priori) + 11 canaux continus\\
+Ordres & \code{order\_id} utilisé comme un nombre, encodé par un sinus & Rang de première apparition, occurrence, action précédente \emph{du même ordre}, première action ; relation « même ordre » dans l'attention\\
+Encodeur & Transformer (2 couches) puis BiLSTM 256 avec attention, $\approx$ 0,8\,M paramètres & Convolutions dilatées + attention relationnelle + pooling attention/moyenne/max\\
+Features de fenêtre & Aucune ; filtrage des fenêtres à plus de 10 écarts-types & 11 blocs nommés, cachés et versionnés ($\sim$200 colonnes), passés par un \new{entonnoir de screening}\\
+Stress & Aucune partition imitant le test & Queue orientée \new{vers le test} (basse), choix consigné\\
+Sélection & \old{Validation aléatoire} 90\,/\,10, arrêt anticipé dessus & Stress équilibré ; la validation aléatoire est jugée non prédictive (écart de 28 points)\\
+Sortie & Fusion de modèles (moyennes, maximums) ; pseudo-labels au seuil 0,9 & Moyenne de modèles, \new{équilibrage de Sinkhorn}, \new{vote entre voisins} (transductifs)\\
 Période test & Ignorée & \new{Auto-apprentissage} : élèves réentraînés sur les fenêtres test pseudo-étiquetées, deux tours\\
 \midrule
-Score public & $0{,}5072$ & $0{,}5700$ (brut), $0{,}5958$ (équilibré), $0{,}6351$ (V3, voisins), $0{,}6551$ (V4), $\mathbf{0{,}6835}$ (V5)\\
+Validation \textrightarrow{} LB & $\mathbf{0{,}869}$ \textrightarrow{} $\approx0{,}50$ : l'écart est le vrai problème & $\approx0{,}8$ (par grappes, stress équilibré) \textrightarrow{} $0{,}68$ : un écart mesuré, et chaque gain contrôlé au LB\\
+Score public & $\approx0{,}50$ (meilleur score antérieur : $0{,}5072$) & $0{,}5700$ (brut), $0{,}5958$ (équilibré), $0{,}6351$ (V3, voisins), $0{,}6551$ (V4), $\mathbf{0{,}6835}$ (V5)\\
 \bottomrule
 \end{tabularx}
 \caption{Les différences essentielles.}\label{tab:resume}

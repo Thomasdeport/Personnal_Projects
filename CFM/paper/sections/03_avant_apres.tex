@@ -15,16 +15,16 @@ Cette section sert de carte. Les deux schémas suivent une fenêtre de la lectur
 \centering
 \begin{tikzpicture}[node distance=3.2mm]
 % ---------- AVANT ----------
-\node[font=\bfseries, text=old] (h1) {AVANT (Reaction R1/R2, référence V2)};
-\node[oldst, below=of h1] (o1) {\textbf{1. Lecture} \\ CSV → fenêtres de 100 lignes. Catégories one-hot (R2) ou embeddings de dim.~8 (V2). Tailles négatives remplacées par 0.};
-\node[oldst, below=of o1] (o2) {\textbf{2. Échelles locales} \\ $s^\star=\Med(\text{spread}>0)$, $d^\star=\Med(\text{profondeur})$, $f^\star=\Med|f|$ \emph{de la fenêtre}. \\ Toutes les grandeurs sont divisées par ces médianes : $\log(1+\text{spread}/s^\star)$, $\operatorname{asinh}(\Delta\text{mid}/s^\star)$, etc.};
-\node[oldst, below=of o2] (o3) {\textbf{3. Canaux par événement} (19 réels) \\ spread, trajectoire et variation du mid, position du prix, imbalance, profondeur relative et variation, flux relatif et variation, ordre déjà vu, même ordre que l'événement précédent, fraction invalide, quote-flow, 6 historiques d'ordre.};
-\node[oldst, below=of o3] (o4) {\textbf{4. Contexte de fenêtre} \\ moyennes et écarts-types des canaux, log-spread, log-profondeur, échelle de flux, offset du mid, réactions régularisées vers un prior.};
-\node[oldst, below=of o4] (o5) {\textbf{5. Split} \\ train / valid / stress / audit. Stress = queue \old{\textbf{haute}} de profondeur, codée en dur (\code{STRESS\_TAIL='high'}).};
-\node[oldst, below=of o5] (o6) {\textbf{6. Modèle} \\ BiGRU (48) → pooling moyenne + max → 64 \\ contexte MLP → 32 \\ fusion 96 → 64 → 24 \quad($\approx$ 39\,k paramètres). \\ Option : auxiliaire de mouvement du mid.};
-\node[oldst, below=of o6] (o7) {\textbf{7. Sélection} \\ meilleure époque en validation aléatoire ; LR fixe ; 24 à 60 époques.};
-\node[oldst, below=of o7] (o8) {\textbf{8. Sortie} \\ ensemble de seeds / variantes (V2), $\arg\max$.};
-\node[font=\scriptsize, below=1mm of o8, text width=5.6cm, align=center] (os) {valid R1 $\approx 0{,}55$ — LB record $\mathbf{0{,}5072}$ (V2)};
+\node[font=\bfseries, text=old] (h1) {AVANT (pipeline d'octobre 2025)};
+\node[oldst, below=of h1] (o1) {\textbf{1. Lecture et nettoyage} \\ CSV → fenêtres de 100 lignes ; \code{action}, \code{side}, \code{trade} encodés en entiers ; NaN → 0. \\ \old{Suppression, titre par titre, de toute fenêtre contenant une valeur à plus de 10 écarts-types} (prix, bid, ask, tailles, flux).};
+\node[oldst, below=of o1] (o2) {\textbf{2. Features d'événement} \\ spread brut $a-b$, spread relatif $(a-b)/p$, imbalance, OFI, variation de prix, volatilité glissante, momentum 5 et 20, variation de flux, tendance, position dans la fenêtre. Log signé si l'asymétrie dépasse 5. \\ Prix, bid et ask retirés ; tailles présentes seulement via imbalance et OFI.};
+\node[oldst, below=of o2] (o3) {\textbf{3. Normalisation} \\ min-max puis standardisation, \old{statistiques du train appliquées telles quelles au test}.};
+\node[oldst, below=of o3] (o4) {\textbf{4. Identifiants et catégories} \\ venue, action, side, trade : embeddings de dim.~8. \\ \old{\code{order\_id} utilisé comme un nombre}, encodé par $\sin(\pi\,o/100)$.};
+\node[oldst, below=of o4] (o5) {\textbf{5. Split} \\ \old{tirage aléatoire stratifié 90\,/\,10} (\code{train\_test\_split}) : des fenêtres du même titre-jour des deux côtés. Pas de partition imitant le test.};
+\node[oldst, below=of o5] (o6) {\textbf{6. Modèle} \\ position apprise → Transformer (2 couches, 4 têtes) → BiLSTM 256 → pooling par attention → MLP → 24. \\ Variantes essayées : GRU, LSTM, graphes (GAT).};
+\node[oldst, below=of o6] (o7) {\textbf{7. Sélection} \\ Adam, ReduceLROnPlateau et arrêt anticipé \old{sur la perte de validation aléatoire}.};
+\node[oldst, below=of o7] (o8) {\textbf{8. Sortie} \\ fusion des probabilités de plusieurs modèles (moyennes, maximums) ; pseudo-labels avec un seuil de confiance de 0,9.};
+\node[font=\scriptsize, below=1mm of o8, text width=5.6cm, align=center] (os) {\old{validation 0,869 dès l'époque 2} — LB $\approx\mathbf{0{,}50}$};
 \foreach \a/\b in {o1/o2,o2/o3,o3/o4,o4/o5,o5/o6,o6/o7,o7/o8} \draw[arr] (\a) -- (\b);
 
 % ---------- MAINTENANT ----------
@@ -36,32 +36,50 @@ Cette section sert de carte. Les deux schémas suivent une fenêtre de la lectur
 \node[newst, below=of n4] (n5) {\textbf{5. Split} (§\ref{sec:protocole}) \\ audit tiré \emph{en premier} (seed dédiée) ; stress = queue \new{\textbf{basse}}, orientée par la médiane test ; valid ; fit.};
 \node[newst, below=of n5] (n6) {\textbf{6. SignatureNet} (§\ref{sec:signaturenet}) \\ $\sum$ embeddings + linéaire + position → 2 conv. dilatées → 2 attentions avec biais $\beta_h\cdot[\text{même ordre}]$ → pooling attention/moy/max \\ ⊕ contexte 79 → 128 → 64 ; fusion 160 → 96 → 24 \quad (342\,913 paramètres).};
 \node[newst, below=of n6] (n7) {\textbf{7. Entraînement et sélection} (§\ref{sec:entrainement}) \\ AdamW, warmup + cosinus, 40 époques ; époque choisie en valid ; \new{configs comparées sur le stress équilibré} ; refit sur tous les labels.};
-\node[newst, below=of n7] (n8) {\textbf{8. Sortie} (§\ref{sec:sinkhorn}) \\ moyenne de 2 configs $\times$ 2 seeds → \new{équilibrage de Sinkhorn} (coefficient $w_c$ par titre) → $\arg\max$.};
-\node[font=\scriptsize, below=1mm of n8, text width=5.6cm, align=center] (ns) {LB $0{,}5700$ → $0{,}5958$ → $\mathbf{0{,}6351}$ (V3)};
+\node[newst, below=of n7] (n8) {\textbf{8. Sortie} (§\ref{sec:sinkhorn}) \\ moyenne de graines → \new{équilibrage de Sinkhorn} → \new{vote entre voisins} → $\arg\max$ ; puis \new{auto-apprentissage} : pseudo-labels filtrés par accord, quota par titre (§\ref{sec:selftrain}).};
+\node[font=\scriptsize, below=1mm of n8, text width=5.6cm, align=center] (ns) {validation par grappes $\approx0{,}8$ — LB $0{,}570$ → $0{,}635$ → $\mathbf{0{,}6835}$ (V5)};
 \foreach \a/\b in {n1/n2,n2/n3,n3/n4,n4/n5,n5/n6,n6/n7,n7/n8} \draw[arr] (\a) -- (\b);
 \foreach \a/\b in {o1/n1,o2/n2,o3/n3,o4/n4,o5/n5,o6/n6,o7/n7,o8/n8} \draw[dashed, gray!50] (\a.east) -- (\b.west);
 \end{tikzpicture}
-\caption{Les deux pipelines, étape par étape. Les pointillés relient les étapes homologues.}
+\caption{Les deux pipelines, étape par étape. Les pointillés relient les étapes homologues. En rouge, les choix de l'ancien pipeline qui expliquent l'écart entre sa validation et son score public (section~\ref{sec:diagnostic}).}
 \label{fig:avantapres}
 \end{figure}
 
-\subsection{Comparaison détaillée par étape}
+\subsection{Le vrai problème : 0,87 en validation, 0,50 au test}\label{sec:diagnostic}
 
-\begin{longtable}{>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}p{4.6cm}>{\raggedright\arraybackslash}p{4.6cm}>{\raggedright\arraybackslash}p{3.2cm}}
+Le pipeline d'octobre 2025 n'était pas mal construit sur le plan de l'apprentissage. Son réseau (Transformer puis BiLSTM avec attention) est plus gros que le SignatureNet final, et il apprenait vite : \textbf{0,842 sur le train et 0,869 en validation dès la deuxième époque}. Le score public, lui, plafonnait autour de \textbf{0,50}, et seulement après avoir fusionné les probabilités de plusieurs modèles. Plus de 35 points séparaient ce que le pipeline mesurait de ce qu'il obtenait.
+
+L'écart n'était pas un défaut de modèle. C'était un défaut de \emph{mesure}, et la plupart des améliorations de ce document en découlent.
+
+\paragraph{Le symptôme.} Une validation supérieure au train dès la deuxième époque, sur une tâche à 24 classes, n'est pas le signe d'un bon modèle. C'est le signe que la validation est trop facile : elle contient des fenêtres presque identiques à celles du train.
+
+\paragraph{Les causes, de la plus lourde à la plus discrète.}
+\begin{enumerate}
+\item \textbf{La validation aléatoire mesure le jour, pas le titre.} Chaque titre-jour fournit environ 20 fenêtres, qui partagent le même régime : profondeur, spread, taille des ordres, niveau de prix (section~\ref{sec:hierarchie}). Un tirage aléatoire en envoie 18 dans le train et 2 dans la validation. Le modèle peut alors reconnaître le \emph{jour} et en déduire le titre. Au test, qui vient d'autres jours, ce raccourci disparaît. Dans ce projet, le même écart a été mesuré de façon contrôlée : 0,85 en validation aléatoire contre 0,57 au LB pour le premier run (section~\ref{sec:resultats}).
+\item \textbf{Les choix de modèle étaient faits sur cette validation.} Arrêt anticipé, baisse du taux d'apprentissage, choix des modèles à fusionner : tout optimisait la reconnaissance du jour. Le meilleur modèle selon la validation était le meilleur \emph{mémorisateur} de régimes.
+\item \textbf{Les features décrivaient le régime plutôt que le titre.} Un spread en unités de prix brutes, une volatilité, un momentum dépendent du niveau de prix et de l'activité \emph{du jour}. Rien n'exprimait la grille de prix (le tick) ni la convention de taille (le lot), qui sont des signatures stables du titre (sections~\ref{sec:unites} et~\ref{sec:atlas}).
+\item \textbf{La normalisation figée sur le train décalait le test.} Le test est moins profond et contient plus d'odd lots (section~\ref{sec:atlas}). Avec les statistiques du train, ses features tombent dans des zones peu vues à l'entraînement.
+\item \textbf{Le filtrage des valeurs extrêmes retirait des régimes rares.} Supprimer les fenêtres à plus de 10 écarts-types, titre par titre, rend le train plus homogène. Mais le test est justement \emph{décalé} : ce filtrage a pu retirer les fenêtres les plus proches de lui. C'est une hypothèse, qui n'a pas été mesurée.
+\item \textbf{L'identifiant d'ordre était traité comme un nombre.} Sa valeur n'a pas de sens : seule l'égalité « même ordre » en a un (section~\ref{sec:donnees}). L'encoder par un sinus donne au réseau une variable arbitraire à exploiter.
+\item \textbf{Le pseudo-étiquetage était tenté sans garde-fous.} Le seuil de confiance de 0,9 retient surtout les titres faciles, et le professeur, sélectionné sur une validation biaisée, transmettait ses erreurs. Le même principe, avec un filtre d'accord et un quota par titre, rapporte $+4{,}8$ points dans ce document (section~\ref{sec:selftrain}).
+\end{enumerate}
+
+\begin{table}[H]\centering\small
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.3cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{3.6cm}}
 \toprule
-\textbf{Étape} & \textbf{Avant} & \textbf{Maintenant} & \textbf{Pourquoi}\\
-\midrule\endhead
-Spread & $\log(1+S/s^\star)$, $s^\star$ = médiane locale : un spread constant à 1 tick donne $\log 2$, comme un spread constant à 5 ticks & $S_t=(\alpha_t-b_t)/\tick\in\{0,1,2,\dots\}$ ; parts de fenêtre à 1, 2, 3--4, $\ge5$ ticks ; token & Le régime de tick est une signature (η² $\approx 0{,}5$, KS $\approx 0{,}02$, §\ref{sec:resultats})\\
-Prix de l'événement & $\operatorname{asinh}((p-m)/s^\star)$, relatif au \emph{mid} & $D_t$ = distance en ticks au meilleur prix \emph{de son côté} : dans le spread / au meilleur / 1 / 2 / 3--5 / $>5$ & Un ordre « 2 ticks derrière le meilleur ask » décrit un comportement, quelle que soit la largeur du spread\\
-Quantités & $\log(1+q/d^\star)$ & $q/\lot$ (lots), parts de lots ronds / odd lots / mixtes ; token de taille & Les conventions de lot sont propres au titre ; leur dérive est mesurée explicitement\\
-Ordres & « déjà vu », « même que précédent », écart, âge, dernière action & + rang de 1\textsuperscript{re} apparition, première action, \emph{action précédente du même ordre}, nombre d'événements de l'ordre ; relation « même ordre » dans l'attention & Le cycle de vie A→U→D d'un ordre est une empreinte, même tronquée\\
-Catégories & one-hot ou embedding dim.~8 & tokens additionnés en dim.~96, modalité 0 = inconnu & Toutes les entrées discrètes sont traitées pareil\\
-Tailles $<0$ & remplacées par 0 & conservées brutes ; NaN dans les grandeurs dérivées ; fréquence mesurée & Une convention ne doit pas créer de fausse valeur\\
-Contexte & mean/std de canaux relatifs & 11 blocs nommés (\textasciitilde 200 colonnes), retenus par l'entonnoir & Hypothèses testables une par une\\
-Stress & queue haute & queue basse, orientée vers le test (transductif, consigné) & Le test est moins profond : médiane $\log(1+\text{prof.}/\lot)$ de 1,84 (train) contre 1,70 (test)\\
-Encodeur & BiGRU 48 & conv.\ dilatées + attention relationnelle & Motifs locaux et relations longues séparés\\
-Sélection & valid aléatoire & stress équilibré + indicateurs sans labels & Valid 0,85 contre LB 0,57\\
-Sortie & $\arg\max$ & Sinkhorn puis $\arg\max$ & Prédictions biaisées vers les titres peu profonds\\
+Cause & Correctif dans ce document & Effet mesuré\\
+\midrule
+Validation aléatoire & validation par grappes de régime, stress orienté vers le test, audit scellé, soumissions de contrôle (section~\ref{sec:protocole}) & l'écart validation → LB passe de 28 points (run 1) à une lecture fiable du \emph{sens} de chaque effet\\
+Sélection sur cette validation & règles de décision écrites avant les résultats, classement sur le stress équilibré & aucun gain interne adopté sans contrôle\\
+Features de régime & tokens en ticks et en lots, seuils fixés a priori (sections~\ref{sec:unites}--\ref{sec:ordres}) & +16 points à architecture égale (section~\ref{sec:demo})\\
+Normalisation figée & augmentation et alignement de profondeur (section~\ref{sec:aug}) & +0,4 point au LB (augmentation)\\
+Identifiant numérique & rang de première apparition, invariant par renumérotation (section~\ref{sec:donnees}) & garanti par un test de contrat\\
+Pseudo-labels par seuil & accord brut/lissé, quota par titre, contrôles C/D (section~\ref{sec:selftrain}) & +3,8 points (C − D), puis +2,8\\
+Fusion par maximums & moyenne, Sinkhorn, vote entre voisins (sections~\ref{sec:sinkhorn}, \ref{sec:voisins}) & +2,6 et +3,2 points\\
 \bottomrule
-\caption{Comparaison détaillée. $s^\star$, $d^\star$ : médianes locales de la fenêtre.}
-\end{longtable}
+\end{tabularx}
+\caption{De chaque cause au correctif et à son effet. Les effets au LB sont ceux des soumissions de contrôle du registre \code{LEADERBOARD.md}.}
+\label{tab:diagnostic}
+\end{table}
+
+\paragraph{Ce qu'il faut retenir.} Le gain de ce document ne vient pas d'un réseau plus gros : SignatureNet compte moins de paramètres que l'ancien Transformer--BiLSTM. Il vient d'abord de la \emph{mesure}. Tant que la validation récompensait la mémorisation des jours, chaque amélioration apparente pouvait dégrader le test. Une fois la mesure corrigée, les bonnes décisions sont devenues visibles : unités naturelles, tokens, puis exploitation contrôlée de la période test.

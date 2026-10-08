@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2 — 2026-10-08 (papier : nouvelle référence « avant »)
+- La référence de comparaison devient le **pipeline d'octobre 2025** (Transformer + BiLSTM, ≈ 0,8 M paramètres) : 0,869 en validation dès l'époque 2, mais ≈ 0,50 au LB.
+- Section 3 réécrite : schéma avant/maintenant, puis « Le vrai problème : 0,87 en validation, 0,50 au test ». Elle détaille sept causes (validation aléatoire par jour, sélection sur cette validation, features de régime, normalisation figée, filtrage des extrêmes, `order_id` numérique, pseudo-labels par seuil) et relie chacune à son correctif et à son effet mesuré.
+- Introduction et résumé alignés sur cette référence.
+
 ## 0.6.1 — 2026-10-08 (papier : atlas et démonstration)
 - Papier, 61 pages. Section 5, **atlas des données** : 14 figures réelles (fenêtres, tokens, ticks, lots, profondeur, dérive, vie des ordres). Section 17, **démonstration contrôlée** : 25 modèles sur un même protocole. L'échelle du CNN simple isole la représentation : **+16 points** à architecture égale (0,449 → 0,609), puis 0,701 avec toutes les étapes.
 - `v_demo/figures/` : les figures clés des deux notebooks, avec un index.
