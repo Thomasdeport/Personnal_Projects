@@ -160,7 +160,8 @@ code("""
 LB_HISTORY = [('V2', .5072, '', False), ('R1', .5700, 'ticks/lots\\n+ SignatureNet', False),
               ('R1 équil.', .5958, 'Sinkhorn', False), ('R2', .59999, 'profondeur\\naugmentée', False),
               ('V3 A', .6028, '60 ép., EMA,\\nalignement', False), ('V3 B', .6351, 'vote entre\\nvoisins', False),
-              ('V4 C', .6551, 'pseudo-labels\\n(tour 1)', False), ('V4 D', .6174, 'V4 C', True)]
+              ('V4 C', .6551, 'pseudo-labels\\n(tour 1)', False), ('V4 D', .6174, 'V4 C', True),
+              ('V5 ALL', .6837, 'pseudo-labels\\n(tour 2)', False)]
 R.lb_journey(LB_HISTORY); R.self_training_diagram();
 """)
 md("""
